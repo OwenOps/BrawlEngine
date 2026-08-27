@@ -1,4 +1,4 @@
-﻿using BrawlEngine.Host.Ipc;
+﻿using BrawlEngine.Host.Presentation.Ipc;
 using Photino.NET;
 
 namespace BrawlEngine.Host;
@@ -12,7 +12,7 @@ internal static class Program
         if (!File.Exists(uiPath))
         {
             throw new FileNotFoundException(
-                "UI not found. From the repo root run: npx ng build --prefix ui",
+                "UI not found. From the repo root run: npx ng build (in ui/)",
                 uiPath);
         }
 

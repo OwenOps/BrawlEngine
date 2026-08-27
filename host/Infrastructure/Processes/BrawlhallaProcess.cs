@@ -1,6 +1,7 @@
 using System.Diagnostics;
+using BrawlEngine.Host.Domain.Models;
 
-namespace BrawlEngine.Host.Game;
+namespace BrawlEngine.Host.Infrastructure.Processes;
 
 public static class BrawlhallaProcess
 {
@@ -27,5 +28,3 @@ public static class BrawlhallaProcess
         }
     }
 }
-
-public sealed record ApplyGuardDto(bool Allowed, bool Running, string? Message);

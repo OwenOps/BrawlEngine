@@ -1,5 +1,5 @@
 import { Component, OnInit } from '@angular/core';
-import { IpcService } from '../ipc/ipc.service';
+import { IpcService } from '../../core/ipc/ipc.service';
 
 export interface CatalogItem {
   id: number;

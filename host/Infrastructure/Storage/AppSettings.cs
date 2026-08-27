@@ -1,28 +1,23 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace BrawlEngine.Host.Game;
+namespace BrawlEngine.Host.Infrastructure.Storage;
 
 public sealed class AppSettings
 {
     [JsonPropertyName("gamePath")]
     public string? GamePath { get; set; }
 
-    public static string FilePath { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "BrawlEngine",
-        "settings.json");
-
     public static AppSettings Load()
     {
         try
         {
-            if (!File.Exists(FilePath))
+            if (!File.Exists(AppPaths.SettingsFile))
             {
                 return new AppSettings();
             }
 
-            var json = File.ReadAllText(FilePath);
+            var json = File.ReadAllText(AppPaths.SettingsFile);
             return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
         }
         catch (IOException)
@@ -37,12 +32,9 @@ public sealed class AppSettings
 
     public void Save()
     {
-        var dir = Path.GetDirectoryName(FilePath);
-        if (!string.IsNullOrEmpty(dir))
-        {
-            Directory.CreateDirectory(dir);
-        }
-
-        File.WriteAllText(FilePath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+        Directory.CreateDirectory(AppPaths.Root);
+        File.WriteAllText(
+            AppPaths.SettingsFile,
+            JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
     }
 }

@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
-import { MapsPage } from './pages/maps.page';
-import { MusiquesPage } from './pages/musiques.page';
+import { MapsPage } from './features/maps/maps.page';
+import { MusiquesPage } from './features/musiques/musiques.page';
 
 export const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'maps' },

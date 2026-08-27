@@ -27,7 +27,7 @@ Do not save loadout JSON (BE-007). Do not Reset all.
 
 ## Tasks
 
-- [ ] `ModApplier` (or similar) used by `mod.apply`
+- [ ] `ModApplier` in `host/Infrastructure/Apply/` used by `mod.apply`
 - [ ] Guard + resolve game path + backup + copy
 - [ ] Clean extract temp always
 - [ ] `npx ng build` + `dotnet build`

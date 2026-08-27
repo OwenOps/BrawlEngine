@@ -1,9 +1,11 @@
-using BrawlEngine.Host.Catalog;
-using BrawlEngine.Host.Game;
+using BrawlEngine.Host.Domain.Models;
+using BrawlEngine.Host.Infrastructure.GameBanana;
+using BrawlEngine.Host.Infrastructure.Processes;
+using BrawlEngine.Host.Infrastructure.Steam;
 using System.Text.Json;
 using Photino.NET;
 
-namespace BrawlEngine.Host.Ipc;
+namespace BrawlEngine.Host.Presentation.Ipc;
 
 public static class IpcRouter
 {
@@ -103,7 +105,7 @@ public static class IpcRouter
 
         try
         {
-            var page = GameBananaClient.ListRealmsAsync(apiPage).GetAwaiter().GetResult();
+            var page = RealmCatalogClient.ListAsync(apiPage).GetAwaiter().GetResult();
             return new IpcEnvelope
             {
                 Id = request.Id,
@@ -148,7 +150,7 @@ public static class IpcRouter
 
         try
         {
-            var result = GameBananaClient.DownloadModAsync(modId).GetAwaiter().GetResult();
+            var result = ModDownloadClient.DownloadAsync(modId).GetAwaiter().GetResult();
             return new IpcEnvelope
             {
                 Id = request.Id,

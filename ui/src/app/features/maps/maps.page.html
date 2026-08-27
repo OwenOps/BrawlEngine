@@ -1,0 +1,35 @@
+<h2>Maps</h2>
+<p class="hint">
+  Brawlhalla Realms from GameBanana. Download now; Apply is the next step.
+</p>
+@if (error) {
+<p class="error">{{ error }}</p>
+} @if (loading && items.length === 0) {
+<p>Loading…</p>
+}
+<div class="grid">
+  @for (mod of items; track mod.id) {
+  <article class="card">
+    @if (mod.thumbnailUrl) {
+    <img [src]="mod.thumbnailUrl" [alt]="mod.name" />
+    }
+    <h3>{{ mod.name }}</h3>
+    <p>{{ mod.author }}</p>
+    <button
+      type="button"
+      (click)="download(mod)"
+      [disabled]="downloadingId !== null"
+    >
+      {{ downloadingId === mod.id ? 'Downloading…' : 'Download' }}
+    </button>
+    @if (downloadNote[mod.id]) {
+    <p>{{ downloadNote[mod.id] }}</p>
+    }
+  </article>
+  }
+</div>
+@if (!complete && !error) {
+<button type="button" (click)="loadMore()" [disabled]="loading">
+  {{ loading ? 'Loading…' : 'Load more' }}
+</button>
+}

@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace BrawlEngine.Host.Ipc;
+namespace BrawlEngine.Host.Presentation.Ipc;
 
 public sealed class IpcEnvelope
 {

@@ -1,7 +1,9 @@
 using System.Text.RegularExpressions;
+using BrawlEngine.Host.Domain.Models;
+using BrawlEngine.Host.Infrastructure.Storage;
 using Microsoft.Win32;
 
-namespace BrawlEngine.Host.Game;
+namespace BrawlEngine.Host.Infrastructure.Steam;
 
 public static class BrawlhallaLocator
 {
@@ -168,15 +170,4 @@ public static class BrawlhallaLocator
             }
         }
     }
-}
-
-public sealed record GameLocationDto(
-    string? Path,
-    bool Found,
-    string Source,
-    bool HasMapArt)
-{
-    public bool Cancelled { get; init; }
-
-    public string? Error { get; init; }
 }

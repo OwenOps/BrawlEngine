@@ -1,6 +1,6 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { IpcService } from './ipc/ipc.service';
+import { IpcService } from './core/ipc/ipc.service';
 
 export interface GameLocation {
   path: string | null;

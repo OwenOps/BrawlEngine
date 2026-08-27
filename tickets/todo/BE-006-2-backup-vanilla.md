@@ -20,7 +20,7 @@ This ticket can be a C# helper `BackupIfMissing(gameFile, backupFile)` used by B
 
 ## Tasks
 
-- [ ] Helper in e.g. `host/Apply/VanillaBackup.cs`
+- [ ] Helper in `host/Infrastructure/Apply/VanillaBackup.cs`
 - [ ] Unit-of-work: given a target path under `mapArt`, backup once
 - [ ] Do not extract zips here
 

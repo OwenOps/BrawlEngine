@@ -36,3 +36,8 @@ Do **not** extract zips or backup in this ticket.
 - [ ] Game open + Apply → error, `mapArt` unchanged
 - [ ] Game closed + no download → error about missing files
 - [ ] No zip extract yet
+
+## Files
+
+- `host/Presentation/Ipc/IpcRouter.cs`
+- `ui/src/app/features/maps/`
