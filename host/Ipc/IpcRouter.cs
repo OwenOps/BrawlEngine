@@ -40,6 +40,7 @@ public static class IpcRouter
             "game.pick" => GameLocation(request, BrawlhallaLocator.PickFolder()),
             "game.running" => ApplyGuard(request),
             "catalog.maps" => CatalogMaps(request),
+            "mod.download" => DownloadMod(request),
             _ => new IpcEnvelope
             {
                 Id = request.Id,
@@ -119,6 +120,51 @@ public static class IpcRouter
                 Type = request.Type,
                 Ok = false,
                 Error = "Could not load GameBanana: " + ex.Message,
+            };
+        }
+    }
+
+    private static IpcEnvelope DownloadMod(IpcEnvelope request)
+    {
+        var modId = 0;
+        if (request.Payload is { } payload
+            && payload.ValueKind == JsonValueKind.Object
+            && payload.TryGetProperty("id", out var idEl)
+            && idEl.TryGetInt32(out var parsed))
+        {
+            modId = parsed;
+        }
+
+        if (modId <= 0)
+        {
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = false,
+                Error = "Missing mod id.",
+            };
+        }
+
+        try
+        {
+            var result = GameBananaClient.DownloadModAsync(modId).GetAwaiter().GetResult();
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = true,
+                Payload = JsonSerializer.SerializeToElement(result, JsonOptions),
+            };
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException or InvalidOperationException or IOException)
+        {
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = false,
+                Error = "Download failed: " + ex.Message,
             };
         }
     }

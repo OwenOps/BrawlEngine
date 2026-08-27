@@ -1,5 +1,5 @@
 <h2>Maps</h2>
-<p class="hint">Brawlhalla Realms from GameBanana. Download / Apply comes next.</p>
+<p class="hint">Brawlhalla Realms from GameBanana. Download now; Apply is the next step.</p>
 @if (error) {
   <p class="error">{{ error }}</p>
 }
@@ -14,6 +14,12 @@
       }
       <h3>{{ mod.name }}</h3>
       <p>{{ mod.author }}</p>
+      <button type="button" (click)="download(mod)" [disabled]="downloadingId !== null">
+        {{ downloadingId === mod.id ? 'Downloading…' : 'Download' }}
+      </button>
+      @if (downloadNote[mod.id]) {
+        <p>{{ downloadNote[mod.id] }}</p>
+      }
     </article>
   }
 </div>

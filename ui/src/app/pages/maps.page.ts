@@ -27,6 +27,8 @@ export class MapsPage implements OnInit {
   error: string | null = null;
   complete = false;
   private nextApiPage = 1;
+  downloadingId: number | null = null;
+  downloadNote: Record<number, string> = {};
 
   constructor(private readonly ipc: IpcService) {}
 
@@ -36,6 +38,21 @@ export class MapsPage implements OnInit {
 
   loadMore(): void {
     this.load(false);
+  }
+
+  download(mod: CatalogItem): void {
+    if (this.downloadingId !== null) {
+      return;
+    }
+    this.downloadingId = mod.id;
+    this.ipc.request('mod.download', { id: mod.id }).then((reply) => {
+      this.downloadingId = null;
+      if (!reply.ok) {
+        this.downloadNote = { ...this.downloadNote, [mod.id]: reply.error ?? 'Download failed.' };
+        return;
+      }
+      this.downloadNote = { ...this.downloadNote, [mod.id]: 'Downloaded. Apply comes next.' };
+    });
   }
 
   private load(reset: boolean): void {
