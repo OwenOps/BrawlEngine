@@ -1,0 +1,40 @@
+.hint,
+.error {
+  font-size: 0.875rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.card {
+  margin: 0;
+  padding: 0 0 0.75rem;
+  border: 1px solid #333;
+  overflow: hidden;
+}
+
+img {
+  display: block;
+  width: 100%;
+  height: 7rem;
+  object-fit: cover;
+  background: #1c1c1c;
+}
+
+h3,
+p {
+  margin: 0.5rem 0.75rem 0;
+  font-size: 0.875rem;
+}
+
+h3 {
+  font-size: 0.95rem;
+}
+
+button {
+  font: inherit;
+}

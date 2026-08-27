@@ -6,6 +6,13 @@
   </nav>
   <p class="status">{{ hostStatus }}</p>
 </header>
+<section class="game">
+  <p class="path">{{ gamePath }}</p>
+  <button type="button" (click)="chooseFolder()" [disabled]="picking">Choose folder</button>
+  @if (runningMessage) {
+    <p class="warn">{{ runningMessage }}</p>
+  }
+</section>
 <main>
   <router-outlet />
 </main>

@@ -31,6 +31,32 @@ a.active {
   opacity: 0.75;
 }
 
+.game {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid #333;
+}
+
+.path {
+  margin: 0;
+  flex: 1 1 16rem;
+  font-size: 0.875rem;
+  word-break: break-all;
+}
+
+button {
+  font: inherit;
+}
+
+.warn {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 0.875rem;
+}
+
 :host {
   display: block;
 }
