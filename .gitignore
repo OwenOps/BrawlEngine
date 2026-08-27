@@ -1,0 +1,18 @@
+# Cursor agent configs (not part of the project)
+.cursor/
+.cursorignore
+AGENTS.md
+ROADMAP.md
+
+# Host
+host/bin/
+host/obj/
+host/wwwroot/
+
+# Angular
+ui/node_modules/
+ui/dist/
+ui/.angular/
+
+#Other
+Stack.md

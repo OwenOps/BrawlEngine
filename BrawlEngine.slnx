@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/host/">
+    <Project Path="host/BrawlEngine.Host.csproj" />
+  </Folder>
+</Solution>
