@@ -16,11 +16,20 @@
 </header>
 <section class="game">
   <p class="path">{{ gamePath() }}</p>
-  <button type="button" (click)="chooseFolder()" [disabled]="picking()">
+  <button type="button" (click)="chooseFolder()" [disabled]="shellBusy()">
     Choose folder
+  </button>
+  <button type="button" (click)="resetAll()" [disabled]="shellBusy()">
+    Reset all
+  </button>
+  <button type="button" (click)="reapply()" [disabled]="shellBusy()">
+    Reapply
   </button>
   @if (runningMessage(); as warn) {
     <p class="warn">{{ warn }}</p>
+  }
+  @if (actionMessage(); as note) {
+    <p class="action">{{ note }}</p>
   }
 </section>
 <main>

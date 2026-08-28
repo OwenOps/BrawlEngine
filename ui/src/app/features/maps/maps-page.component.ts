@@ -3,6 +3,7 @@ import { ApplyAttempt } from '../../core/ipc/contracts/apply.contracts';
 import { CatalogItem, CatalogPage } from '../../core/ipc/contracts/catalog.contracts';
 import { IPC_MESSAGE } from '../../core/ipc/ipc.constants';
 import { IpcService } from '../../core/ipc/ipc.service';
+import { LoadoutService } from '../../core/loadout/loadout.service';
 
 @Component({
   selector: 'app-maps-page',
@@ -13,6 +14,7 @@ import { IpcService } from '../../core/ipc/ipc.service';
 })
 export class MapsPageComponent {
   private readonly ipc = inject(IpcService);
+  private readonly loadout = inject(LoadoutService);
 
   readonly items = signal<CatalogItem[]>([]);
   readonly loading = signal(false);
@@ -23,12 +25,19 @@ export class MapsPageComponent {
   readonly cardNote = signal<Record<number, string>>({});
   readonly canLoadMore = computed(() => !this.complete() && this.error() === null);
   readonly isBusy = computed(
-    () => this.downloadingId() !== null || this.applyingId() !== null,
+    () =>
+      this.downloadingId() !== null ||
+      this.applyingId() !== null ||
+      this.loadout.busy(),
   );
   private readonly nextApiPage = signal(1);
 
   constructor() {
     this.load(true);
+  }
+
+  isActive(modId: number): boolean {
+    return this.loadout.activeMapIds().has(modId);
   }
 
   loadMore(): void {
@@ -69,10 +78,11 @@ export class MapsPageComponent {
         }
         const result = reply.payload as ApplyAttempt | undefined;
         if (result?.applied) {
-          this.setNote(mod.id, 'Applied.');
+          this.setNote(mod.id, result.reason ?? 'Applied.');
+          void this.loadout.refresh();
           return;
         }
-        this.setNote(mod.id, result?.reason ?? 'Ready. Extract comes next.');
+        this.setNote(mod.id, result?.reason ?? 'Apply did not change any files.');
       })
       .catch((error: unknown) => {
         this.setNote(mod.id, error instanceof Error ? error.message : 'Apply failed.');

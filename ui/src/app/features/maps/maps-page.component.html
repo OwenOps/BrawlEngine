@@ -14,6 +14,9 @@
       }
       <h3>{{ mod.name }}</h3>
       <p>{{ mod.author }}</p>
+      @if (isActive(mod.id)) {
+        <p class="active">Active</p>
+      }
       <button
         type="button"
         (click)="download(mod)"

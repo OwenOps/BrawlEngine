@@ -10,6 +10,7 @@ import {
 import { ApplyGuard, GameLocation } from './core/ipc/contracts/game.contracts';
 import { IPC_MESSAGE } from './core/ipc/ipc.constants';
 import { IpcService } from './core/ipc/ipc.service';
+import { LoadoutService } from './core/loadout/loadout.service';
 import { APP_TABS, AppTabId } from './core/navigation/app-tabs.config';
 import { APP_SHELL_TEXT } from './core/ui/app-shell.constants';
 
@@ -22,6 +23,7 @@ import { APP_SHELL_TEXT } from './core/ui/app-shell.constants';
 })
 export class AppComponent implements OnDestroy {
   private readonly ipc = inject(IpcService);
+  private readonly loadout = inject(LoadoutService);
   private runningTimer: ReturnType<typeof setInterval> | undefined;
 
   readonly tabs = APP_TABS;
@@ -30,6 +32,11 @@ export class AppComponent implements OnDestroy {
   readonly gamePath = signal<string>(APP_SHELL_TEXT.gameLooking);
   readonly runningMessage = signal<string | null>(null);
   readonly picking = signal(false);
+  readonly actionBusy = signal(false);
+  readonly actionMessage = signal<string | null>(null);
+  readonly shellBusy = computed(
+    () => this.picking() || this.actionBusy() || this.loadout.busy(),
+  );
   readonly activeTabComponent = computed(
     () =>
       APP_TABS.find((tab) => tab.id === this.activeTabId())?.component ??
@@ -63,6 +70,33 @@ export class AppComponent implements OnDestroy {
       this.picking.set(false);
       this.applyGame(reply.payload as GameLocation | undefined, reply.error);
     });
+  }
+
+  resetAll(): void {
+    this.runLoadoutAction(() => this.loadout.resetAll());
+  }
+
+  reapply(): void {
+    this.runLoadoutAction(() => this.loadout.reapply());
+  }
+
+  private runLoadoutAction(action: () => Promise<{ ok: boolean; message: string }>): void {
+    if (this.shellBusy()) {
+      return;
+    }
+
+    this.actionBusy.set(true);
+    this.actionMessage.set(null);
+    action()
+      .then((result) => {
+        this.actionMessage.set(result.message);
+      })
+      .catch((error: unknown) => {
+        this.actionMessage.set(error instanceof Error ? error.message : 'Request failed.');
+      })
+      .finally(() => {
+        this.actionBusy.set(false);
+      });
   }
 
   private refreshGame(): void {

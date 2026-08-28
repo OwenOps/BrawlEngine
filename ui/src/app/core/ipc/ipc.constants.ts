@@ -6,6 +6,9 @@ export const IPC_MESSAGE = {
   CATALOG_MAPS: 'catalog.maps',
   MOD_DOWNLOAD: 'mod.download',
   MOD_APPLY: 'mod.apply',
+  LOADOUT_GET: 'loadout.get',
+  MODS_RESET_ALL: 'mods.resetAll',
+  MODS_REAPPLY: 'mods.reapply',
 } as const;
 
 export type IpcMessageType = typeof IPC_MESSAGE[keyof typeof IPC_MESSAGE];
