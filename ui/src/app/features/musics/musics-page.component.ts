@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
 
 @Component({
   selector: 'app-musics-page',
@@ -7,5 +7,6 @@ import { Component } from '@angular/core';
     <h1>Musics</h1>
     <p>Music mods and custom links will live here. Catalog wiring is a later step.</p>
   `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class MusicsPage {}
+export class MusicsPageComponent {}

@@ -23,8 +23,8 @@ Every ticket has **Expected feature**: what the player (or you) should see when 
 | [BE-003](done/BE-003-apply-guard.md) | Warn if game running | done |
 | [BE-004](done/BE-004-maps-catalog.md) | Maps catalog | done |
 | [BE-005](done/BE-005-download.md) | Download zips | done |
-| [BE-006-1](current/BE-006-1-apply-button-and-guard.md) | Apply button + refuse if game open | **current** |
-| [BE-006-2](todo/BE-006-2-backup-vanilla.md) | Backup vanilla files once | todo |
+| [BE-006-1](done/BE-006-1-apply-button-and-guard.md) | Apply button + refuse if game open | done |
+| [BE-006-2](current/BE-006-2-backup-vanilla.md) | Backup vanilla files once | **current** |
 | [BE-006-3](todo/BE-006-3-extract-and-copy.md) | Extract zip → mapArt | todo |
 | [BE-007](todo/BE-007-loadout.md) | One current loadout JSON | todo |
 | [BE-008](todo/BE-008-reset-all.md) | Reset all | todo |

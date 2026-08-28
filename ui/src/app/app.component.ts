@@ -1,15 +1,16 @@
 import { NgComponentOutlet } from '@angular/common';
-import { Component, OnDestroy, OnInit, Type } from '@angular/core';
-import { MapsPage } from './features/maps/maps.page';
-import { MusicsPage } from './features/musics/musics.page';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  OnDestroy,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import { ApplyGuard, GameLocation } from './core/ipc/contracts/game.contracts';
 import { IPC_MESSAGE } from './core/ipc/ipc.constants';
 import { IpcService } from './core/ipc/ipc.service';
-import {
-  APP_TABS,
-  AppTabDef,
-  AppTabId,
-} from './core/navigation/app-tabs.config';
+import { APP_TABS, AppTabId } from './core/navigation/app-tabs.config';
 import { APP_SHELL_TEXT } from './core/ui/app-shell.constants';
 
 @Component({
@@ -17,23 +18,29 @@ import { APP_SHELL_TEXT } from './core/ui/app-shell.constants';
   imports: [NgComponentOutlet],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class AppComponent implements OnInit, OnDestroy {
-  tabs = APP_TABS;
-  activeTabId: AppTabId = APP_TABS[0].id;
-  hostStatus: string = APP_SHELL_TEXT.hostChecking;
-  gamePath: string = APP_SHELL_TEXT.gameLooking;
-  runningMessage: string | null = null;
-  picking = false;
+export class AppComponent implements OnDestroy {
+  private readonly ipc = inject(IpcService);
   private runningTimer: ReturnType<typeof setInterval> | undefined;
 
-  constructor(private readonly ipc: IpcService) {}
+  readonly tabs = APP_TABS;
+  readonly activeTabId = signal<AppTabId>(APP_TABS[0].id);
+  readonly hostStatus = signal<string>(APP_SHELL_TEXT.hostChecking);
+  readonly gamePath = signal<string>(APP_SHELL_TEXT.gameLooking);
+  readonly runningMessage = signal<string | null>(null);
+  readonly picking = signal(false);
+  readonly activeTabComponent = computed(
+    () =>
+      APP_TABS.find((tab) => tab.id === this.activeTabId())?.component ??
+      APP_TABS[0].component,
+  );
 
-  ngOnInit(): void {
+  constructor() {
     this.ipc.request(IPC_MESSAGE.PING).then((reply) => {
-      this.hostStatus = reply.ok
-        ? 'Host connected'
-        : (reply.error ?? 'Host unavailable');
+      this.hostStatus.set(
+        reply.ok ? 'Host connected' : (reply.error ?? 'Host unavailable'),
+      );
     });
     this.refreshGame();
     this.refreshRunning();
@@ -46,10 +53,14 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
+  selectTab(id: AppTabId): void {
+    this.activeTabId.set(id);
+  }
+
   chooseFolder(): void {
-    this.picking = true;
+    this.picking.set(true);
     this.ipc.request(IPC_MESSAGE.GAME_PICK).then((reply) => {
-      this.picking = false;
+      this.picking.set(false);
       this.applyGame(reply.payload as GameLocation | undefined, reply.error);
     });
   }
@@ -63,29 +74,22 @@ export class AppComponent implements OnInit, OnDestroy {
   private refreshRunning(): void {
     this.ipc.request(IPC_MESSAGE.GAME_RUNNING).then((reply) => {
       const status = reply.payload as ApplyGuard | undefined;
-      this.runningMessage = status?.running
-        ? (status.message ?? 'Close Brawlhalla first.')
-        : null;
+      this.runningMessage.set(
+        status?.running ? (status.message ?? 'Close Brawlhalla first.') : null,
+      );
     });
   }
 
   private applyGame(location: GameLocation | undefined, error?: string): void {
     if (error) {
-      this.gamePath = error;
+      this.gamePath.set(error);
       return;
     }
     if (!location?.found || !location.path) {
-      this.gamePath = 'Brawlhalla not found. Choose the game folder.';
+      this.gamePath.set('Brawlhalla not found. Choose the game folder.');
       return;
     }
     const mapArt = location.hasMapArt ? '' : ' (mapArt folder missing)';
-    this.gamePath = location.path + mapArt;
-  }
-
-  get activeTabComponent(): Type<unknown> {
-    return (
-      APP_TABS.find((tab) => tab.id === this.activeTabId)?.component ??
-      APP_TABS[0].component
-    );
+    this.gamePath.set(location.path + mapArt);
   }
 }

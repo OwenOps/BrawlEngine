@@ -2,18 +2,27 @@
   <h1>BrawlEngine</h1>
   <nav>
     @for (tab of tabs; track tab.id) {
-      <button type="button" class="tab" [class.active]="activeTabId === tab.id" (click)="activeTabId = tab.id">{{ tab.label }}</button>
+      <button
+        type="button"
+        class="tab"
+        [class.active]="activeTabId() === tab.id"
+        (click)="selectTab(tab.id)"
+      >
+        {{ tab.label }}
+      </button>
     }
   </nav>
-  <p class="status">{{ hostStatus }}</p>
+  <p class="status">{{ hostStatus() }}</p>
 </header>
 <section class="game">
-  <p class="path">{{ gamePath }}</p>
-  <button type="button" (click)="chooseFolder()" [disabled]="picking">Choose folder</button>
-  @if (runningMessage) {
-    <p class="warn">{{ runningMessage }}</p>
+  <p class="path">{{ gamePath() }}</p>
+  <button type="button" (click)="chooseFolder()" [disabled]="picking()">
+    Choose folder
+  </button>
+  @if (runningMessage(); as warn) {
+    <p class="warn">{{ warn }}</p>
   }
 </section>
 <main>
-  <ng-container *ngComponentOutlet="activeTabComponent" />
+  <ng-container [ngComponentOutlet]="activeTabComponent()" />
 </main>

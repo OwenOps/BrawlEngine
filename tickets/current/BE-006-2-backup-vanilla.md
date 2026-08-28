@@ -2,7 +2,7 @@
 
 | Field | Value |
 | --- | --- |
-| Folder | todo |
+| Folder | **current** |
 | Blocked by | BE-006-1 |
 | Next | BE-006-3 |
 | Rule | `.cursor/rules/mod-apply.mdc` |

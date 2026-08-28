@@ -1,4 +1,4 @@
-import { Injectable, NgZone } from '@angular/core';
+import { inject, Injectable, NgZone } from '@angular/core';
 import { photinoExternal } from './photino';
 
 export interface IpcEnvelope {
@@ -11,10 +11,9 @@ export interface IpcEnvelope {
 
 @Injectable({ providedIn: 'root' })
 export class IpcService {
+  private readonly zone = inject(NgZone);
   private readonly pending = new Map<string, (msg: IpcEnvelope) => void>();
   private listening = false;
-
-  constructor(private readonly zone: NgZone) {}
 
   request(type: string, payload?: unknown): Promise<IpcEnvelope> {
     if (!this.hasHost()) {

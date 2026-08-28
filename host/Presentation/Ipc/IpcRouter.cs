@@ -1,4 +1,5 @@
 using BrawlEngine.Host.Domain.Models;
+using BrawlEngine.Host.Infrastructure.Apply;
 using BrawlEngine.Host.Infrastructure.GameBanana;
 using BrawlEngine.Host.Infrastructure.Processes;
 using BrawlEngine.Host.Infrastructure.Steam;
@@ -43,6 +44,7 @@ public static class IpcRouter
             "game.running" => ApplyGuard(request),
             "catalog.maps" => CatalogMaps(request),
             "mod.download" => DownloadMod(request),
+            "mod.apply" => ApplyMod(request),
             _ => new IpcEnvelope
             {
                 Id = request.Id,
@@ -169,5 +171,38 @@ public static class IpcRouter
                 Error = "Download failed: " + ex.Message,
             };
         }
+    }
+
+    private static IpcEnvelope ApplyMod(IpcEnvelope request)
+    {
+        var modId = 0;
+        if (request.Payload is { } payload
+            && payload.ValueKind == JsonValueKind.Object
+            && payload.TryGetProperty("id", out var idEl)
+            && idEl.TryGetInt32(out var parsed))
+        {
+            modId = parsed;
+        }
+
+        if (modId <= 0)
+        {
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = false,
+                Error = "Missing mod id.",
+            };
+        }
+
+        var (ok, error, result) = ModApplyService.TryPrepare(modId);
+        return new IpcEnvelope
+        {
+            Id = request.Id,
+            Type = request.Type,
+            Ok = ok,
+            Error = error,
+            Payload = result is null ? null : JsonSerializer.SerializeToElement(result, JsonOptions),
+        };
     }
 }

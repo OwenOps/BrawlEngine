@@ -16,6 +16,7 @@ ui/.angular/
 
 #Visual
 .vs
+ui/.vscode/
 
 #Other
 Stack.md

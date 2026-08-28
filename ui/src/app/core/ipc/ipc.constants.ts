@@ -5,6 +5,7 @@ export const IPC_MESSAGE = {
   GAME_RUNNING: 'game.running',
   CATALOG_MAPS: 'catalog.maps',
   MOD_DOWNLOAD: 'mod.download',
+  MOD_APPLY: 'mod.apply',
 } as const;
 
 export type IpcMessageType = typeof IPC_MESSAGE[keyof typeof IPC_MESSAGE];
