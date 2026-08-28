@@ -49,21 +49,33 @@ export class MapsPage implements OnInit {
     }
     this.downloadingId.set(mod.id);
 
-    this.ipc.request(IPC_MESSAGE.MOD_DOWNLOAD, { id: mod.id })
+    this.ipc
+      .request(IPC_MESSAGE.MOD_DOWNLOAD, { id: mod.id })
       .then((reply) => {
         if (!reply.ok) {
-          this.downloadNote.update((notes) => ({ ...notes, [mod.id]: reply.error ?? 'Download failed.' }));
+          this.downloadNote.update((notes) => ({
+            ...notes,
+            [mod.id]: reply.error ?? 'Download failed.',
+          }));
           return;
         }
-        this.downloadNote.update((notes) => ({ ...notes, [mod.id]: 'Downloaded. Apply comes next.' }));
+        this.downloadNote.update((notes) => ({
+          ...notes,
+          [mod.id]: 'Downloaded. Apply comes next.',
+        }));
       })
       .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : 'Download failed.';
+        const message =
+          error instanceof Error ? error.message : 'Download failed.';
         this.downloadNote.update((notes) => ({ ...notes, [mod.id]: message }));
       })
       .finally(() => {
         this.downloadingId.set(null);
       });
+  }
+
+  apply(mod: CatalogItem): void {
+    
   }
 
   private load(reset: boolean): void {
@@ -74,8 +86,9 @@ export class MapsPage implements OnInit {
     this.loading.set(true);
     this.error.set(null);
     const page = reset ? 1 : this.nextApiPage();
-    
-    this.ipc.request(IPC_MESSAGE.CATALOG_MAPS, { page })
+
+    this.ipc
+      .request(IPC_MESSAGE.CATALOG_MAPS, { page })
       .then((reply) => {
         if (!reply.ok) {
           this.error.set(reply.error ?? 'Could not load maps.');
@@ -88,12 +101,16 @@ export class MapsPage implements OnInit {
           return;
         }
 
-        this.items.update((existing) => (reset ? data.items : [...existing, ...data.items]));
+        this.items.update((existing) =>
+          reset ? data.items : [...existing, ...data.items],
+        );
         this.nextApiPage.set(data.nextApiPage);
         this.complete.set(data.complete);
       })
       .catch((error: unknown) => {
-        this.error.set(error instanceof Error ? error.message : 'Could not load maps.');
+        this.error.set(
+          error instanceof Error ? error.message : 'Could not load maps.',
+        );
       })
       .finally(() => {
         this.loading.set(false);

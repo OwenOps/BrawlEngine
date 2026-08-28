@@ -22,9 +22,17 @@
     >
       {{ downloadingId() === mod.id ? 'Downloading…' : 'Download' }}
     </button>
-    @if (downloadNote()[mod.id]) {
+    
+    <button
+      type="button"
+      (click)="apply(mod)"
+      [disabled]="downloadingId() !== null"
+    >
+      {{ downloadingId() === mod.id ? 'Applying...' : 'Apply' }}
+    </button>
+    <!-- @if (downloadNote()[mod.id]) {
     <p>{{ downloadNote()[mod.id] }}</p>
-    }
+    } -->
   </article>
   }
 </div>
