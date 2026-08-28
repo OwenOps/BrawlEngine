@@ -1,4 +1,5 @@
 import { Component, OnInit, computed, signal } from '@angular/core';
+import { IPC_MESSAGE } from '../../core/ipc/ipc.constants';
 import { IpcService } from '../../core/ipc/ipc.service';
 
 export interface CatalogItem {
@@ -47,7 +48,8 @@ export class MapsPage implements OnInit {
       return;
     }
     this.downloadingId.set(mod.id);
-    this.ipc.request('mod.download', { id: mod.id })
+
+    this.ipc.request(IPC_MESSAGE.MOD_DOWNLOAD, { id: mod.id })
       .then((reply) => {
         if (!reply.ok) {
           this.downloadNote.update((notes) => ({ ...notes, [mod.id]: reply.error ?? 'Download failed.' }));
@@ -68,10 +70,12 @@ export class MapsPage implements OnInit {
     if (this.loading()) {
       return;
     }
+
     this.loading.set(true);
     this.error.set(null);
     const page = reset ? 1 : this.nextApiPage();
-    this.ipc.request('catalog.maps', { page })
+    
+    this.ipc.request(IPC_MESSAGE.CATALOG_MAPS, { page })
       .then((reply) => {
         if (!reply.ok) {
           this.error.set(reply.error ?? 'Could not load maps.');

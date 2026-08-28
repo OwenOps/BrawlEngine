@@ -40,7 +40,7 @@ public static class RealmCatalogClient
                 items.Add(ToItem(record));
             }
 
-            if (items.Count < PageSize)
+            if (items.Count <= PageSize)
             {
                 complete = true;
             }
