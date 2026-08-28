@@ -1,8 +1,9 @@
 <header class="shell">
   <h1>BrawlEngine</h1>
   <nav>
-    <a routerLink="/maps" routerLinkActive="active">Maps</a>
-    <a routerLink="/musiques" routerLinkActive="active">Musiques</a>
+    @for (tab of tabs; track tab.id) {
+      <button type="button" class="tab" [class.active]="activeTabId === tab.id" (click)="activeTabId = tab.id">{{ tab.label }}</button>
+    }
   </nav>
   <p class="status">{{ hostStatus }}</p>
 </header>
@@ -14,5 +15,5 @@
   }
 </section>
 <main>
-  <router-outlet />
+  <ng-container *ngComponentOutlet="activeTabComponent" />
 </main>

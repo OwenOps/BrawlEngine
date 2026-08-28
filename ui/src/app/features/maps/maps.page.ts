@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, computed, signal } from '@angular/core';
 import { IpcService } from '../../core/ipc/ipc.service';
 
 export interface CatalogItem {
@@ -18,17 +18,19 @@ export interface CatalogPage {
 
 @Component({
   selector: 'app-maps-page',
+  standalone: true,
   templateUrl: './maps.page.html',
   styleUrl: './maps.page.scss',
 })
 export class MapsPage implements OnInit {
-  items: CatalogItem[] = [];
-  loading = false;
-  error: string | null = null;
-  complete = false;
-  private nextApiPage = 1;
-  downloadingId: number | null = null;
-  downloadNote: Record<number, string> = {};
+  readonly items = signal<CatalogItem[]>([]);
+  readonly loading = signal(false);
+  readonly error = signal<string | null>(null);
+  readonly complete = signal(false);
+  readonly downloadingId = signal<number | null>(null);
+  readonly downloadNote = signal<Record<number, string>>({});
+  readonly canLoadMore = computed(() => !this.complete() && !this.error());
+  private readonly nextApiPage = signal(1);
 
   constructor(private readonly ipc: IpcService) {}
 
@@ -41,41 +43,56 @@ export class MapsPage implements OnInit {
   }
 
   download(mod: CatalogItem): void {
-    if (this.downloadingId !== null) {
+    if (this.downloadingId() !== null) {
       return;
     }
-    this.downloadingId = mod.id;
-    this.ipc.request('mod.download', { id: mod.id }).then((reply) => {
-      this.downloadingId = null;
-      if (!reply.ok) {
-        this.downloadNote = { ...this.downloadNote, [mod.id]: reply.error ?? 'Download failed.' };
-        return;
-      }
-      this.downloadNote = { ...this.downloadNote, [mod.id]: 'Downloaded. Apply comes next.' };
-    });
+    this.downloadingId.set(mod.id);
+    this.ipc.request('mod.download', { id: mod.id })
+      .then((reply) => {
+        if (!reply.ok) {
+          this.downloadNote.update((notes) => ({ ...notes, [mod.id]: reply.error ?? 'Download failed.' }));
+          return;
+        }
+        this.downloadNote.update((notes) => ({ ...notes, [mod.id]: 'Downloaded. Apply comes next.' }));
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : 'Download failed.';
+        this.downloadNote.update((notes) => ({ ...notes, [mod.id]: message }));
+      })
+      .finally(() => {
+        this.downloadingId.set(null);
+      });
   }
 
   private load(reset: boolean): void {
-    if (this.loading) {
+    if (this.loading()) {
       return;
     }
-    this.loading = true;
-    this.error = null;
-    const page = reset ? 1 : this.nextApiPage;
-    this.ipc.request('catalog.maps', { page }).then((reply) => {
-      this.loading = false;
-      if (!reply.ok) {
-        this.error = reply.error ?? 'Could not load maps.';
-        return;
-      }
-      const data = reply.payload as CatalogPage | undefined;
-      if (!data) {
-        this.error = 'Empty catalog response.';
-        return;
-      }
-      this.items = reset ? data.items : [...this.items, ...data.items];
-      this.nextApiPage = data.nextApiPage;
-      this.complete = data.complete;
-    });
+    this.loading.set(true);
+    this.error.set(null);
+    const page = reset ? 1 : this.nextApiPage();
+    this.ipc.request('catalog.maps', { page })
+      .then((reply) => {
+        if (!reply.ok) {
+          this.error.set(reply.error ?? 'Could not load maps.');
+          return;
+        }
+
+        const data = reply.payload as CatalogPage | undefined;
+        if (!data) {
+          this.error.set('Empty catalog response.');
+          return;
+        }
+
+        this.items.update((existing) => (reset ? data.items : [...existing, ...data.items]));
+        this.nextApiPage.set(data.nextApiPage);
+        this.complete.set(data.complete);
+      })
+      .catch((error: unknown) => {
+        this.error.set(error instanceof Error ? error.message : 'Could not load maps.');
+      })
+      .finally(() => {
+        this.loading.set(false);
+      });
   }
 }

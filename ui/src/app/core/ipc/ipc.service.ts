@@ -51,6 +51,7 @@ export class IpcService {
         try {
           msg = JSON.parse(raw) as IpcEnvelope;
         } catch {
+          console.error('IPC receive parse error:', raw);
           return;
         }
         const resolve = this.pending.get(msg.id);

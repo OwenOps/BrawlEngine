@@ -1,6 +1,8 @@
-import { Component, OnDestroy, OnInit } from '@angular/core';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { NgComponentOutlet } from '@angular/common';
+import { Component, OnDestroy, OnInit, Type } from '@angular/core';
 import { IpcService } from './core/ipc/ipc.service';
+import { MapsPage } from './features/maps/maps.page';
+import { MusiquesPage } from './features/musiques/musiques.page';
 
 export interface GameLocation {
   path: string | null;
@@ -19,11 +21,16 @@ export interface ApplyGuard {
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive],
+  imports: [NgComponentOutlet],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
 })
 export class AppComponent implements OnInit, OnDestroy {
+  readonly tabs: ReadonlyArray<{ id: string; label: string; component: Type<unknown> }> = [
+    { id: 'maps', label: 'Maps', component: MapsPage },
+    { id: 'musiques', label: 'Musiques', component: MusiquesPage },
+  ];
+  activeTabId = this.tabs[0].id;
   hostStatus = 'Checking host…';
   gamePath = 'Looking for Brawlhalla…';
   runningMessage: string | null = null;
@@ -79,5 +86,9 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     const mapArt = location.hasMapArt ? '' : ' (mapArt folder missing)';
     this.gamePath = location.path + mapArt;
+  }
+
+  get activeTabComponent(): Type<unknown> {
+    return this.tabs.find((tab) => tab.id === this.activeTabId)?.component ?? this.tabs[0].component;
   }
 }
