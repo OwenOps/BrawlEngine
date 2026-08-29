@@ -63,6 +63,12 @@ public static class LoadoutStore
         return next;
     }
 
+    public static void ClearMaps()
+    {
+        var current = Load();
+        Save(current with { Maps = [] });
+    }
+
     public static void Clear()
     {
         Save(LoadoutDto.Empty);

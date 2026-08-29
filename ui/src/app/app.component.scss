@@ -70,3 +70,31 @@ button {
 main {
   padding: 1.25rem;
 }
+
+.configs {
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid #333;
+}
+
+.configs h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.configs label {
+  margin-right: 0.75rem;
+}
+
+.configs ul {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+}
+
+.configs li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0.35rem 0;
+}

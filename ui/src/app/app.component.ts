@@ -34,6 +34,8 @@ export class AppComponent implements OnDestroy {
   readonly picking = signal(false);
   readonly actionBusy = signal(false);
   readonly actionMessage = signal<string | null>(null);
+  readonly configName = signal('');
+  readonly configs = this.loadout.configs;
   readonly shellBusy = computed(
     () => this.picking() || this.actionBusy() || this.loadout.busy(),
   );
@@ -76,8 +78,35 @@ export class AppComponent implements OnDestroy {
     this.runLoadoutAction(() => this.loadout.resetAll());
   }
 
+  rankedSafe(): void {
+    this.runLoadoutAction(() => this.loadout.rankedSafe());
+  }
+
   reapply(): void {
     this.runLoadoutAction(() => this.loadout.reapply());
+  }
+
+  setConfigName(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    this.configName.set(input.value);
+  }
+
+  saveConfig(): void {
+    const name = this.configName().trim();
+    if (!name) {
+      this.actionMessage.set('Enter a name to save the current loadout.');
+      return;
+    }
+
+    this.runLoadoutAction(() => this.loadout.saveCurrent(name));
+  }
+
+  loadConfig(id: string): void {
+    this.runLoadoutAction(() => this.loadout.loadConfig(id));
+  }
+
+  deleteConfig(id: string): void {
+    this.runLoadoutAction(() => this.loadout.deleteConfig(id));
   }
 
   private runLoadoutAction(action: () => Promise<{ ok: boolean; message: string }>): void {

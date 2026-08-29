@@ -14,6 +14,11 @@ export const IPC_MESSAGE = {
   MUSIC_APPLY: 'music.apply',
   MUSIC_TRACKS: 'music.tracks',
   MUSIC_REPLACE: 'music.replace',
+  MODS_RANKED_SAFE: 'mods.rankedSafe',
+  CONFIGS_LIST: 'configs.list',
+  CONFIGS_SAVE: 'configs.save',
+  CONFIGS_LOAD: 'configs.load',
+  CONFIGS_DELETE: 'configs.delete',
 } as const;
 
 export type IpcMessageType = typeof IPC_MESSAGE[keyof typeof IPC_MESSAGE];

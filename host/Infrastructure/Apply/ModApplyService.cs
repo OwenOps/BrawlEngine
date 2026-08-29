@@ -100,6 +100,31 @@ public static class ModApplyService
         }
     }
 
+    public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryRankedSafe()
+    {
+        var blocked = EnsureCanWrite();
+        if (blocked.Error is not null)
+        {
+            return (false, blocked.Error, null);
+        }
+
+        try
+        {
+            var restored = VanillaReset.RestoreMapArt(blocked.GameRoot!);
+            if (restored == 0)
+            {
+                return (false, "Nothing to restore in mapArt. Apply a map mod first so vanilla files are backed up.", null);
+            }
+
+            LoadoutStore.ClearMaps();
+            return (true, null, new ApplyAttemptDto(true, "Ranked/safe: restored " + restored + " mapArt file(s). Music left unchanged."));
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            return (false, "Ranked/safe failed: " + ex.Message, null);
+        }
+    }
+
     public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryReapply()
     {
         var blocked = EnsureCanWrite();

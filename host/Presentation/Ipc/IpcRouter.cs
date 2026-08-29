@@ -53,7 +53,12 @@ public static class IpcRouter
             "music.replace" => ReplaceTrack(request),
             "loadout.get" => Loadout(request),
             "mods.resetAll" => ResetAll(request),
+            "mods.rankedSafe" => RankedSafe(request),
             "mods.reapply" => Reapply(request),
+            "configs.list" => ConfigsList(request),
+            "configs.save" => ConfigsSave(request),
+            "configs.load" => ConfigsLoad(request),
+            "configs.delete" => ConfigsDelete(request),
             _ => new IpcEnvelope
             {
                 Id = request.Id,
@@ -347,10 +352,140 @@ public static class IpcRouter
         return Attempt(request, ok, error, result);
     }
 
+    private static IpcEnvelope RankedSafe(IpcEnvelope request)
+    {
+        var (ok, error, result) = ModApplyService.TryRankedSafe();
+        return Attempt(request, ok, error, result);
+    }
+
     private static IpcEnvelope Reapply(IpcEnvelope request)
     {
         var (ok, error, result) = ModApplyService.TryReapply();
         return Attempt(request, ok, error, result);
+    }
+
+    private static IpcEnvelope ConfigsList(IpcEnvelope request)
+    {
+        return new IpcEnvelope
+        {
+            Id = request.Id,
+            Type = request.Type,
+            Ok = true,
+            Payload = JsonSerializer.SerializeToElement(new { configs = NamedConfigStore.List() }, JsonOptions),
+        };
+    }
+
+    private static IpcEnvelope ConfigsSave(IpcEnvelope request)
+    {
+        var name = ReadString(request, "name");
+        try
+        {
+            var saved = NamedConfigStore.SaveCurrent(name);
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = true,
+                Payload = JsonSerializer.SerializeToElement(saved, JsonOptions),
+            };
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException)
+        {
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = false,
+                Error = ex.Message,
+            };
+        }
+    }
+
+    private static IpcEnvelope ConfigsLoad(IpcEnvelope request)
+    {
+        var id = ReadString(request, "id");
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = false,
+                Error = "Missing config id.",
+            };
+        }
+
+        try
+        {
+            NamedConfigStore.ApplyToCurrent(id);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException)
+        {
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = false,
+                Error = ex.Message,
+            };
+        }
+
+        var current = LoadoutStore.Load();
+        if (current.Maps.Count == 0 && current.Music.Count == 0)
+        {
+            return Attempt(request, true, null, new ApplyAttemptDto(true, "Loaded. Nothing to apply."));
+        }
+
+        var (ok, error, result) = ModApplyService.TryReapply();
+        return Attempt(request, ok, error, result);
+    }
+
+    private static IpcEnvelope ConfigsDelete(IpcEnvelope request)
+    {
+        var id = ReadString(request, "id");
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = false,
+                Error = "Missing config id.",
+            };
+        }
+
+        try
+        {
+            NamedConfigStore.Delete(id);
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = true,
+            };
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException)
+        {
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = false,
+                Error = ex.Message,
+            };
+        }
+    }
+
+    private static string ReadString(IpcEnvelope request, string property)
+    {
+        if (request.Payload is { } payload
+            && payload.ValueKind == JsonValueKind.Object
+            && payload.TryGetProperty(property, out var value))
+        {
+            return value.GetString() ?? "";
+        }
+
+        return "";
     }
 
     private static IpcEnvelope ApplyMod(IpcEnvelope request)

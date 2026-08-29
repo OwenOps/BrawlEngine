@@ -10,6 +10,8 @@ public static class AppPaths
 
     public static string LoadoutFile => Path.Combine(Root, "config.json");
 
+    public static string NamedConfigsFile => Path.Combine(Root, "configs.json");
+
     public static string DownloadsFolder(int modId) =>
         Path.Combine(Root, "downloads", modId.ToString());
 

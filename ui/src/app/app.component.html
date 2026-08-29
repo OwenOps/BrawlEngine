@@ -22,6 +22,9 @@
   <button type="button" (click)="resetAll()" [disabled]="shellBusy()">
     Reset all
   </button>
+  <button type="button" (click)="rankedSafe()" [disabled]="shellBusy()">
+    Ranked / safe
+  </button>
   <button type="button" (click)="reapply()" [disabled]="shellBusy()">
     Reapply
   </button>
@@ -31,6 +34,34 @@
   @if (actionMessage(); as note) {
     <p class="action">{{ note }}</p>
   }
+</section>
+<section class="configs">
+  <h2>Saved loadouts</h2>
+  <label>
+    Name
+    <input
+      type="text"
+      [value]="configName()"
+      (input)="setConfigName($event)"
+      [disabled]="shellBusy()"
+    />
+  </label>
+  <button type="button" (click)="saveConfig()" [disabled]="shellBusy()">
+    Save current
+  </button>
+  <ul>
+    @for (config of configs(); track config.id) {
+      <li>
+        <span>{{ config.name }}</span>
+        <button type="button" (click)="loadConfig(config.id)" [disabled]="shellBusy()">
+          Load
+        </button>
+        <button type="button" (click)="deleteConfig(config.id)" [disabled]="shellBusy()">
+          Delete
+        </button>
+      </li>
+    }
+  </ul>
 </section>
 <main>
   <ng-container [ngComponentOutlet]="activeTabComponent()" />
