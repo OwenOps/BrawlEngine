@@ -1,0 +1,61 @@
+<h1>Musics</h1>
+<p class="hint">
+  GameBanana Sounds for Brawlhalla. Apply only copies .mp3 files whose names match
+  a file in the game mp3 folder (menu / map themes). Many SFX packs will not match.
+</p>
+
+<section class="custom">
+  <h2>Custom MP3</h2>
+  <p class="hint">Pick a local .mp3 and the in-game track to replace. No YouTube download in v1.</p>
+  @if (tracks().length === 0) {
+    <p class="error">No tracks found. Choose the Brawlhalla folder (it should contain mp3).</p>
+  } @else {
+    <label>
+      Track
+      <select [value]="selectedTrack()" (change)="selectTrack($event)" [disabled]="isBusy()">
+        @for (track of tracks(); track track) {
+          <option [value]="track">{{ track }}</option>
+        }
+      </select>
+    </label>
+    <button type="button" (click)="replaceTrack()" [disabled]="isBusy() || !selectedTrack()">
+      {{ replacing() ? 'Replacing…' : 'Replace with file…' }}
+    </button>
+  }
+  @if (customNote(); as note) {
+    <p>{{ note }}</p>
+  }
+</section>
+
+@if (error(); as errorMessage) {
+  <p class="error">{{ errorMessage }}</p>
+}
+@if (loading() && items().length === 0) {
+  <p>Loading…</p>
+}
+<div class="grid">
+  @for (item of items(); track item.id) {
+    <article class="card">
+      <h3>{{ item.name }}</h3>
+      <p>{{ item.author }}</p>
+      <p>{{ item.category }}</p>
+      @if (isActive(item.id)) {
+        <p class="active">Active</p>
+      }
+      <button type="button" (click)="download(item)" [disabled]="isBusy()">
+        {{ downloadingId() === item.id ? 'Downloading…' : 'Download' }}
+      </button>
+      <button type="button" (click)="apply(item)" [disabled]="isBusy()">
+        {{ applyingId() === item.id ? 'Applying…' : 'Apply' }}
+      </button>
+      @if (cardNote()[item.id]; as note) {
+        <p>{{ note }}</p>
+      }
+    </article>
+  }
+</div>
+@if (canLoadMore()) {
+  <button type="button" (click)="loadMore()" [disabled]="loading()">
+    {{ loading() ? 'Loading…' : 'Load more' }}
+  </button>
+}

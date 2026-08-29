@@ -27,21 +27,41 @@ public static class VanillaBackup
 
     public static bool BackupMapArtIfMissing(string gameRoot, string relativeUnderMapArt)
     {
-        var (gameFile, backupFile) = MapArtPaths(gameRoot, relativeUnderMapArt);
+        var (gameFile, backupFile) = PathsUnder(gameRoot, BrawlhallaLocator.MapArtFolder, relativeUnderMapArt);
+        return BackupIfMissing(gameFile, backupFile);
+    }
+
+    public static bool BackupMp3IfMissing(string gameRoot, string fileName)
+    {
+        var (gameFile, backupFile) = PathsUnder(gameRoot, BrawlhallaLocator.Mp3Folder, fileName);
         return BackupIfMissing(gameFile, backupFile);
     }
 
     public static (string GameFile, string BackupFile) MapArtPaths(string gameRoot, string relativeUnderMapArt)
     {
+        return PathsUnder(gameRoot, BrawlhallaLocator.MapArtFolder, relativeUnderMapArt);
+    }
+
+    public static (string GameFile, string BackupFile) Mp3Paths(string gameRoot, string fileName)
+    {
+        return PathsUnder(gameRoot, BrawlhallaLocator.Mp3Folder, fileName);
+    }
+
+    public static (string GameFile, string BackupFile) PathsUnder(
+        string gameRoot,
+        string gameSubfolder,
+        string relative)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(gameRoot);
-        ArgumentException.ThrowIfNullOrWhiteSpace(relativeUnderMapArt);
+        ArgumentException.ThrowIfNullOrWhiteSpace(gameSubfolder);
+        ArgumentException.ThrowIfNullOrWhiteSpace(relative);
 
-        var mapArtRoot = Path.GetFullPath(Path.Combine(gameRoot, BrawlhallaLocator.MapArtFolder));
-        var gameFile = Path.GetFullPath(Path.Combine(mapArtRoot, relativeUnderMapArt));
-        EnsureUnder(mapArtRoot, gameFile);
+        var folderRoot = Path.GetFullPath(Path.Combine(gameRoot, gameSubfolder));
+        var gameFile = Path.GetFullPath(Path.Combine(folderRoot, relative));
+        EnsureUnder(folderRoot, gameFile);
 
-        var backupRoot = Path.GetFullPath(Path.Combine(AppPaths.BackupsRoot, BrawlhallaLocator.MapArtFolder));
-        var backupFile = Path.GetFullPath(Path.Combine(backupRoot, relativeUnderMapArt));
+        var backupRoot = Path.GetFullPath(Path.Combine(AppPaths.BackupsRoot, gameSubfolder));
+        var backupFile = Path.GetFullPath(Path.Combine(backupRoot, relative));
         EnsureUnder(backupRoot, backupFile);
 
         return (gameFile, backupFile);
@@ -54,7 +74,7 @@ public static class VanillaBackup
         if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(path, root, StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidOperationException("Path is outside mapArt.");
+            throw new InvalidOperationException("Path is outside the allowed game folder.");
         }
     }
 }

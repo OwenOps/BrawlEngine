@@ -9,6 +9,11 @@ export const IPC_MESSAGE = {
   LOADOUT_GET: 'loadout.get',
   MODS_RESET_ALL: 'mods.resetAll',
   MODS_REAPPLY: 'mods.reapply',
+  CATALOG_SOUNDS: 'catalog.sounds',
+  SOUND_DOWNLOAD: 'sound.download',
+  MUSIC_APPLY: 'music.apply',
+  MUSIC_TRACKS: 'music.tracks',
+  MUSIC_REPLACE: 'music.replace',
 } as const;
 
 export type IpcMessageType = typeof IPC_MESSAGE[keyof typeof IPC_MESSAGE];

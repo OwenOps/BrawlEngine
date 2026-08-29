@@ -13,6 +13,9 @@ export class LoadoutService {
   readonly activeMapIds = computed(
     () => new Set(this.loadout().maps.map((entry) => entry.modId)),
   );
+  readonly activeMusicIds = computed(
+    () => new Set(this.loadout().music.map((entry) => entry.modId)),
+  );
 
   constructor() {
     this.refresh();

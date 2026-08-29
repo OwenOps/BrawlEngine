@@ -1,0 +1,60 @@
+.hint,
+.error {
+  font-size: 0.875rem;
+}
+
+.custom {
+  margin: 1rem 0;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #333;
+}
+
+h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.card {
+  margin: 0;
+  padding: 0 0 0.75rem;
+  border: 1px solid #333;
+  overflow: hidden;
+}
+
+h3,
+p {
+  margin: 0.5rem 0.75rem 0;
+  font-size: 0.875rem;
+}
+
+h3 {
+  font-size: 0.95rem;
+}
+
+.active {
+  font-weight: 600;
+}
+
+button {
+  font: inherit;
+  margin: 0.5rem 0.75rem 0;
+}
+
+.custom button {
+  margin-left: 0;
+}

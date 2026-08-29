@@ -7,14 +7,17 @@ namespace BrawlEngine.Host.Infrastructure.GameBanana;
 
 public static class ModDownloadClient
 {
-    public static async Task<DownloadResultDto> DownloadAsync(int modId, CancellationToken cancellationToken = default)
+    public static async Task<DownloadResultDto> DownloadAsync(
+        int id,
+        string itemType = "Mod",
+        CancellationToken cancellationToken = default)
     {
-        if (modId <= 0)
+        if (id <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(modId));
+            throw new ArgumentOutOfRangeException(nameof(id));
         }
 
-        var profileUrl = $"https://gamebanana.com/apiv11/Mod/{modId}/ProfilePage";
+        var profileUrl = $"https://gamebanana.com/apiv11/{itemType}/{id}/ProfilePage";
         using var profileResponse = await AppHttp.Shared.GetAsync(profileUrl, cancellationToken).ConfigureAwait(false);
         profileResponse.EnsureSuccessStatusCode();
         await using var profileStream = await profileResponse.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
@@ -23,10 +26,12 @@ public static class ModDownloadClient
         var files = ListDownloadableFiles(doc.RootElement);
         if (files.Count == 0)
         {
-            throw new InvalidOperationException("This mod has no downloadable files.");
+            throw new InvalidOperationException("This item has no downloadable files.");
         }
 
-        var folder = AppPaths.DownloadsFolder(modId);
+        var folder = itemType == GameBananaIds.SoundItemType
+            ? AppPaths.SoundDownloadsFolder(id)
+            : AppPaths.DownloadsFolder(id);
         Directory.CreateDirectory(folder);
 
         var saved = new List<DownloadedFileDto>();
@@ -61,7 +66,7 @@ public static class ModDownloadClient
             }
         }
 
-        return new DownloadResultDto(modId, folder, saved);
+        return new DownloadResultDto(id, folder, saved);
     }
 
     private static List<(string Name, string Url, long Size)> ListDownloadableFiles(JsonElement root)

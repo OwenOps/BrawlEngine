@@ -9,6 +9,7 @@ public static class BrawlhallaLocator
 {
     public const string ExeName = "Brawlhalla.exe";
     public const string MapArtFolder = "mapArt";
+    public const string Mp3Folder = "mp3";
 
     public static GameLocationDto Resolve()
     {
