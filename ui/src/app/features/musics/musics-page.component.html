@@ -1,61 +1,237 @@
-<h1>Musics</h1>
-<p class="hint">
-  GameBanana Sounds for Brawlhalla. Apply only copies .mp3 files whose names match
-  a file in the game mp3 folder (menu / map themes). Many SFX packs will not match.
-</p>
-
 <section class="custom">
-  <h2>Custom MP3</h2>
-  <p class="hint">Pick a local .mp3 and the in-game track to replace. No YouTube download in v1.</p>
+  <h2>Custom audio</h2>
+  <ol class="steps">
+    <li>The app looks in <code>audio\pc</code> for Wwise <code>.wem</code> files (or the old <code>mp3</code> folder if you still have it).</li>
+    <li>Pick a track (names come from <code>MUS_*.bnk</code>). Replace it with a matching <code>.wem</code> — not an MP3.</li>
+  </ol>
   @if (tracks().length === 0) {
-    <p class="error">No tracks found. Choose the Brawlhalla folder (it should contain mp3).</p>
+    <p class="error">
+      No in-game tracks yet. Use <strong>Set music folder</strong> in the sidebar, then Retry.
+    </p>
+    <button type="button" (click)="reloadTracks()">Retry</button>
   } @else {
-    <label>
-      Track
-      <select [value]="selectedTrack()" (change)="selectTrack($event)" [disabled]="isBusy()">
-        @for (track of tracks(); track track) {
-          <option [value]="track">{{ track }}</option>
-        }
-      </select>
-    </label>
-    <button type="button" (click)="replaceTrack()" [disabled]="isBusy() || !selectedTrack()">
-      {{ replacing() ? 'Replacing…' : 'Replace with file…' }}
-    </button>
+    <div class="custom-row">
+      <label>
+        Track
+        <select [value]="selectedTrack()" (change)="selectTrack($event)" [disabled]="isBusy()">
+          @for (group of trackGroups(); track group.id) {
+            <optgroup [label]="group.label">
+              @for (track of group.tracks; track track.fileName) {
+                <option [value]="track.fileName">{{ track.label }}</option>
+              }
+            </optgroup>
+          }
+        </select>
+      </label>
+      <button type="button" class="primary" (click)="replaceTrack()" [disabled]="isBusy() || !selectedTrack()">
+        {{ replacing() ? 'Replacing…' : '📁 Replace with file…' }}
+      </button>
+    </div>
+    @if (selectedSlotHint(); as hint) {
+      <p class="hint">{{ hint }}</p>
+    }
+    @if (usesWem()) {
+      <p class="hint">
+        Current Brawlhalla music is Wwise. Copying an MP3 over a .wem will not play. GameBanana packs must include matching .wem names.
+      </p>
+    } @else {
+    <div class="custom-row">
+      <input
+        type="url"
+        placeholder="https://example.com/song.mp3"
+        [value]="audioUrl()"
+        (input)="setAudioUrl($event)"
+        [disabled]="isBusy()"
+      />
+      <button type="button" (click)="replaceFromUrl()" [disabled]="isBusy() || !selectedTrack()">
+        {{ replacing() ? 'Replacing…' : 'Replace from URL' }}
+      </button>
+    </div>
+    }
   }
   @if (customNote(); as note) {
-    <p>{{ note }}</p>
+    <p class="note">{{ note }}</p>
   }
 </section>
+
+<header class="page-head">
+  <div>
+    <h1>Musics</h1>
+    <p class="hint">
+      GameBanana Sounds. Apply copies files whose names match a vanilla track (.wem in audio\pc, or .mp3 on old installs).
+      Filter by GameBanana category (Music, Win Theme, Announcer, …).
+    </p>
+  </div>
+  @if (isLibrary()) {
+    <p class="count">{{ shownItems().length }} {{ libraryFilter() === 'disk' ? 'on disk' : 'applied' }}</p>
+  } @else if (totalCount() > 0) {
+    <p class="count">{{ totalCount() }} sounds</p>
+  }
+</header>
+
+<div class="catalog-tools">
+  <input
+    type="search"
+    placeholder="Search sounds"
+    [value]="queryInput()"
+    (input)="onQueryInput($event)"
+  />
+  <label>
+    Sort
+    <select [value]="sort()" (change)="onSort($event)" [disabled]="loading() || isLibrary()">
+      @for (option of sorts; track option.id) {
+        <option [value]="option.id">{{ option.label }}</option>
+      }
+    </select>
+  </label>
+</div>
+
+<div class="filter-bar">
+  <span class="filter-label">Show</span>
+  <div class="slot-filters">
+    @for (option of libraryFilters; track option.id) {
+      <button
+        type="button"
+        class="chip"
+        [class.active]="libraryFilter() === option.id"
+        (click)="setLibraryFilter(option.id)"
+      >
+        {{ option.label }}
+      </button>
+    }
+  </div>
+</div>
+
+<div class="filter-bar">
+  <span class="filter-label">Filter by category</span>
+  <div class="slot-filters">
+    <button
+      type="button"
+      class="chip"
+      [class.active]="categoryId() === 0"
+      (click)="setCategoryFilter(0)"
+    >
+      All
+    </button>
+    @for (cat of soundCategories; track cat.id) {
+      <button
+        type="button"
+        class="chip"
+        [class.active]="categoryId() === cat.id"
+        (click)="setCategoryFilter(cat.id)"
+      >
+        {{ cat.label }}
+      </button>
+    }
+  </div>
+</div>
 
 @if (error(); as errorMessage) {
   <p class="error">{{ errorMessage }}</p>
 }
-@if (loading() && items().length === 0) {
-  <p>Loading…</p>
+@if (loading() && shownItems().length === 0) {
+  <div class="catalog-loader" role="status">
+    <span class="catalog-loader-spin"></span>
+    <p>Loading sounds…</p>
+  </div>
+} @else if (!loading() && shownItems().length === 0 && !error()) {
+  @if (libraryFilter() === 'disk') {
+    <p class="hint">Nothing on disk yet. Download a sound first.</p>
+  } @else if (libraryFilter() === 'applied') {
+    <p class="hint">No sounds in the current loadout.</p>
+  } @else {
+    <p class="hint">No sounds found for this filter.</p>
+  }
 }
-<div class="grid">
-  @for (item of items(); track item.id) {
-    <article class="card">
-      <h3>{{ item.name }}</h3>
-      <p>{{ item.author }}</p>
-      <p>{{ item.category }}</p>
-      @if (isActive(item.id)) {
-        <p class="active">Active</p>
-      }
-      <button type="button" (click)="download(item)" [disabled]="isBusy()">
-        {{ downloadingId() === item.id ? 'Downloading…' : 'Download' }}
-      </button>
-      <button type="button" (click)="apply(item)" [disabled]="isBusy()">
-        {{ applyingId() === item.id ? 'Applying…' : 'Apply' }}
-      </button>
-      @if (cardNote()[item.id]; as note) {
-        <p>{{ note }}</p>
-      }
+
+<div class="catalog-panel">
+  @if (loading() && shownItems().length > 0) {
+    <div class="catalog-loader overlay" role="status">
+      <span class="catalog-loader-spin"></span>
+      <p>Loading sounds…</p>
+    </div>
+  }
+  <div class="sound-list" [class.is-loading]="loading() && shownItems().length > 0">
+  @for (item of shownItems(); track item.id) {
+    <article class="sound-row" [class.is-downloading]="downloadingId() === item.id">
+      <div class="sound-main">
+        <p class="sound-name">{{ item.name }}</p>
+        <p class="author">{{ item.author }} · {{ item.category }}</p>
+        @if (isActive(item.id)) {
+          <span class="badge">Active</span>
+        } @else if (isDownloaded(item.id)) {
+          <span class="badge downloaded">Downloaded</span>
+        }
+        @if (downloadingId() === item.id) {
+          <div class="progress-bar" [class.indeterminate]="downloadActivity.percentFor('sounds', item.id) === null">
+            <div class="progress-bar-fill" [style.width.%]="downloadActivity.percentFor('sounds', item.id) ?? 100"></div>
+          </div>
+        }
+        @if (diskSize(item.id); as size) {
+          <p class="note">On disk · {{ size }}</p>
+        }
+        @if (cardNote()[item.id]; as note) {
+          <p class="note">{{ note }}</p>
+        }
+      </div>
+      <div class="actions">
+        @if (!isDownloaded(item.id)) {
+          <button type="button" (click)="download(item)" [disabled]="isBusy()">
+            {{ downloadingId() === item.id ? downloadLabel(item.id) : 'Download' }}
+          </button>
+        } @else {
+          <button type="button" class="primary" (click)="apply(item)" [disabled]="isBusy()">
+            {{
+              applyingId() === item.id
+                ? 'Applying…'
+                : isActive(item.id)
+                  ? 'Re-apply'
+                  : 'Apply'
+            }}
+          </button>
+          <button
+            type="button"
+            class="icon-btn danger"
+            [title]="diskSize(item.id) ? 'Delete downloaded files (' + diskSize(item.id) + ')' : 'Delete downloaded files'"
+            (click)="deleteDownload(item.id)"
+            [disabled]="isBusy()"
+          >
+            {{ deletingId() === item.id ? '…' : '🗑' }}
+          </button>
+        }
+        <button type="button" class="icon-btn" title="Info" (click)="openInfo(item)">
+          ℹ
+        </button>
+      </div>
     </article>
   }
 </div>
-@if (canLoadMore()) {
-  <button type="button" (click)="loadMore()" [disabled]="loading()">
-    {{ loading() ? 'Loading…' : 'Load more' }}
-  </button>
+</div>
+
+@if (!isLibrary() && totalPages() > 1) {
+  <nav class="pager">
+    <button type="button" (click)="goToPage(page() - 1)" [disabled]="loading() || page() <= 1">
+      ‹ Prev
+    </button>
+    <span>Page {{ page() }} of {{ totalPages() }}</span>
+    <button type="button" (click)="goToPage(page() + 1)" [disabled]="loading() || page() >= totalPages()">
+      Next ›
+    </button>
+  </nav>
+}
+
+@if (infoItem(); as item) {
+  <div class="overlay" (click)="closeInfo()">
+    <div class="sheet" (click)="$event.stopPropagation()">
+      <h2>{{ item.name }}</h2>
+      <p class="hint">{{ item.author }} · {{ item.category }}</p>
+      <p class="hint">Sounds on this tab come from GameBanana. Apply only replaces matching .mp3 names.</p>
+      <div class="sheet-actions">
+        <button type="button" class="primary" (click)="openProfile(item.profileUrl)">
+          View on GameBanana
+        </button>
+        <button type="button" (click)="closeInfo()">Close</button>
+      </div>
+    </div>
+  </div>
 }

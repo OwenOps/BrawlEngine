@@ -6,46 +6,61 @@ namespace BrawlEngine.Host.Infrastructure.GameBanana;
 
 public static class SoundCatalogClient
 {
-    public const int PageSize = 15;
+    public const int PageSize = CatalogSearch.PageSize;
 
-    private const string IndexUrl =
-        "https://gamebanana.com/apiv11/Sound/Index?_nPage={0}&_nPerpage=15&_aFilters%5BGeneric_Game%5D=5704";
-
-    public static async Task<CatalogPageDto> ListAsync(int page, CancellationToken cancellationToken = default)
+    public static async Task<CatalogPageDto> ListAsync(
+        int page,
+        string? query,
+        string? sort,
+        int categoryId = 0,
+        CancellationToken cancellationToken = default)
     {
         if (page < 1)
         {
             page = 1;
         }
 
-        using var response = await AppHttp.Shared.GetAsync(string.Format(IndexUrl, page), cancellationToken)
-            .ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
-        var root = doc.RootElement;
-
-        var complete = false;
-        if (root.TryGetProperty("_aMetadata", out var meta)
-            && meta.TryGetProperty("_bIsComplete", out var done))
+        if (!GameBananaIds.IsSoundCategory(categoryId))
         {
-            complete = done.GetBoolean();
+            categoryId = 0;
         }
 
-        var items = new List<CatalogItemDto>();
-        if (root.TryGetProperty("_aRecords", out var records) && records.ValueKind == JsonValueKind.Array)
+        query = query?.Trim() ?? "";
+        if (query.Length >= 2)
         {
-            foreach (var record in records.EnumerateArray())
-            {
-                items.Add(ToItem(record));
-            }
+            return await CatalogSearch.SearchAsync(
+                    page,
+                    query,
+                    sort,
+                    record => CatalogSearch.IsModel(record, GameBananaIds.SoundItemType)
+                        && CatalogSearch.NameContains(record, query)
+                        && (categoryId == 0 || CatalogSearch.RootCategoryId(record) == categoryId),
+                    ToItem,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        var url =
+            "https://gamebanana.com/apiv11/Sound/Index?_nPage="
+            + page
+            + "&_nPerpage="
+            + PageSize
+            + "&_sSort="
+            + CatalogSearch.SortAlias(sort);
+        if (categoryId > 0)
+        {
+            url += "&_aFilters%5BGeneric_Category%5D=" + categoryId;
         }
         else
         {
-            complete = true;
+            url += "&_aFilters%5BGeneric_Game%5D=" + GameBananaIds.BrawlhallaGameId;
         }
 
-        return new CatalogPageDto(items, page + 1, complete);
+        using var response = await AppHttp.Shared.GetAsync(url, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+        return CatalogSearch.ParseIndex(doc.RootElement, page, ToItem);
     }
 
     private static CatalogItemDto ToItem(JsonElement record)
