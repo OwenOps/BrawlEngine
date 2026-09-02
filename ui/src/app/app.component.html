@@ -1,68 +1,163 @@
-<header class="shell">
-  <h1>BrawlEngine</h1>
-  <nav>
-    @for (tab of tabs; track tab.id) {
-      <button
-        type="button"
-        class="tab"
-        [class.active]="activeTabId() === tab.id"
-        (click)="selectTab(tab.id)"
-      >
-        {{ tab.label }}
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <img class="brand-mark" src="logo.png" alt="BrawlEngine" />
+      <div>
+        <h1>BrawlEngine</h1>
+        <p class="tagline">Mod manager</p>
+      </div>
+    </div>
+
+    <nav class="nav">
+      @for (tab of tabs; track tab.id) {
+        <button
+          type="button"
+          class="nav-item"
+          [class.active]="activeTabId() === tab.id"
+          (click)="selectTab(tab.id)"
+        >
+          <span class="nav-icon">{{ tab.icon }}</span>
+          {{ tab.label }}
+        </button>
+      }
+    </nav>
+
+    <div class="sidebar-section">
+      <p class="section-label">Game</p>
+      <div class="status-row">
+        <span class="status-dot" [class.ok]="gameFound()" [class.bad]="!gameFound()"></span>
+        <p class="path" [title]="gamePath()">{{ gamePath() }}</p>
+      </div>
+      <button type="button" class="link" (click)="chooseFolder()" [disabled]="shellBusy()">
+        {{ picking() ? 'Choosing…' : 'Change game folder' }}
       </button>
-    }
-  </nav>
-  <p class="status">{{ hostStatus() }}</p>
-</header>
-<section class="game">
-  <p class="path">{{ gamePath() }}</p>
-  <button type="button" (click)="chooseFolder()" [disabled]="shellBusy()">
-    Choose folder
-  </button>
-  <button type="button" (click)="resetAll()" [disabled]="shellBusy()">
-    Reset all
-  </button>
-  <button type="button" (click)="rankedSafe()" [disabled]="shellBusy()">
-    Ranked / safe
-  </button>
-  <button type="button" (click)="reapply()" [disabled]="shellBusy()">
-    Reapply
-  </button>
-  @if (runningMessage(); as warn) {
-    <p class="warn">{{ warn }}</p>
-  }
-  @if (actionMessage(); as note) {
-    <p class="action">{{ note }}</p>
-  }
-</section>
-<section class="configs">
-  <h2>Saved loadouts</h2>
-  <label>
-    Name
-    <input
-      type="text"
-      [value]="configName()"
-      (input)="setConfigName($event)"
-      [disabled]="shellBusy()"
-    />
-  </label>
-  <button type="button" (click)="saveConfig()" [disabled]="shellBusy()">
-    Save current
-  </button>
-  <ul>
-    @for (config of configs(); track config.id) {
-      <li>
-        <span>{{ config.name }}</span>
-        <button type="button" (click)="loadConfig(config.id)" [disabled]="shellBusy()">
-          Load
+      @if (runningMessage(); as warn) {
+        <p class="warn">⚠ {{ warn }}</p>
+      }
+    </div>
+
+    <div class="sidebar-section">
+      <p class="section-label">Music</p>
+      <div class="status-row">
+        <span class="status-dot" [class.ok]="hasMp3()" [class.bad]="!hasMp3()"></span>
+        <p class="path" [title]="mp3Path()">{{ mp3Path() }}</p>
+      </div>
+      <button type="button" class="link" (click)="chooseMp3Folder()" [disabled]="shellBusy()">
+        {{ picking() ? 'Choosing…' : hasMp3() ? 'Change music folder' : 'Set music folder' }}
+      </button>
+    </div>
+
+    @if (hasLoadout()) {
+      <div class="sidebar-section">
+        <p class="section-label">Loadout actions</p>
+        <button type="button" class="wide primary" (click)="reapply()" [disabled]="shellBusy()">
+          ↻ Reapply
         </button>
-        <button type="button" (click)="deleteConfig(config.id)" [disabled]="shellBusy()">
-          Delete
+        <button type="button" class="wide safe" (click)="rankedSafe()" [disabled]="shellBusy()">
+          🛡 Ranked / safe
         </button>
-      </li>
+        <button type="button" class="wide danger" (click)="resetAll()" [disabled]="shellBusy()">
+          ⟲ Reset all
+        </button>
+      </div>
     }
-  </ul>
-</section>
-<main>
-  <ng-container [ngComponentOutlet]="activeTabComponent()" />
-</main>
+
+    <div class="sidebar-section configs">
+      <p class="section-label">Saved loadouts</p>
+      <div class="save-row">
+        <input
+          type="text"
+          placeholder="Loadout name"
+          [value]="configName()"
+          (input)="setConfigName($event)"
+          [disabled]="shellBusy()"
+        />
+        <button type="button" class="icon-btn" title="Save current loadout" (click)="saveConfig()" [disabled]="shellBusy()">
+          💾
+        </button>
+      </div>
+      @if (configs().length === 0) {
+        <p class="hint">No saved loadouts yet.</p>
+      } @else {
+        <ul>
+          @for (config of configs(); track config.id) {
+            <li>
+              <span [title]="config.name">{{ config.name }}</span>
+              <button type="button" class="icon-btn" title="Load" (click)="loadConfig(config.id)" [disabled]="shellBusy()">
+                ▶
+              </button>
+              <button type="button" class="icon-btn danger" title="Delete" (click)="deleteConfig(config.id)" [disabled]="shellBusy()">
+                ✕
+              </button>
+            </li>
+          }
+        </ul>
+      }
+    </div>
+
+    @if (actionMessage(); as note) {
+      <p class="note">{{ note }}</p>
+    }
+
+    @if (downloadActivity.active().length > 0) {
+      <div class="sidebar-section activity">
+        <p class="section-label">Downloading</p>
+        @for (item of downloadActivity.active(); track item.kind + ':' + item.id) {
+          <div class="activity-row">
+            <p class="activity-name" [title]="item.fileName">{{ item.fileName }}</p>
+            <div class="progress-bar" [class.indeterminate]="item.totalBytes <= 0">
+              <div
+                class="progress-bar-fill"
+                [style.width.%]="item.totalBytes > 0 ? (item.bytesDownloaded / item.totalBytes) * 100 : 100"
+              ></div>
+            </div>
+          </div>
+        }
+      </div>
+    }
+
+    <div class="sidebar-section">
+      <p class="section-label">Appearance</p>
+      <div class="theme-row">
+        @for (name of themeNames; track name) {
+          <button
+            type="button"
+            class="theme-swatch"
+            [class.active]="theme.current() === name"
+            [style.background]="theme.presets[name].accent"
+            [title]="theme.presets[name].label"
+            [attr.aria-label]="theme.presets[name].label"
+            (click)="selectTheme(name)"
+          ></button>
+        }
+      </div>
+    </div>
+
+    <div class="status-footer">
+      <div class="status-row">
+        <span class="status-dot" [class.ok]="hostConnected() === true" [class.bad]="hostConnected() === false"></span>
+        <p class="host-status">{{ hostStatus() }}</p>
+      </div>
+      <p class="credit">
+        Maps, sounds, and skins powered by
+        <button type="button" class="link" (click)="openGameBanana()">GameBanana</button>
+      </p>
+    </div>
+  </aside>
+
+  <main>
+    <div class="tab-page" style="--page-accent: var(--accent-maps)" [hidden]="activeTabId() !== 'maps'">
+      <app-maps-page />
+    </div>
+    @if (visitedTabIds().has('musics')) {
+      <div class="tab-page" style="--page-accent: var(--accent-music)" [hidden]="activeTabId() !== 'musics'">
+        <app-musics-page />
+      </div>
+    }
+    @if (visitedTabIds().has('skins')) {
+      <div class="tab-page" style="--page-accent: var(--accent-skins)" [hidden]="activeTabId() !== 'skins'">
+        <app-skins-page />
+      </div>
+    }
+  </main>
+</div>
