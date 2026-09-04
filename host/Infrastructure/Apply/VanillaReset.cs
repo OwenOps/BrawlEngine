@@ -10,14 +10,31 @@ public static class VanillaReset
         return RestoreSubfolder(gameRoot, BrawlhallaLocator.MapArtFolder);
     }
 
-    public static int RestoreMp3(string gameRoot)
+    public static int RestoreMp3()
     {
-        return RestoreSubfolder(gameRoot, BrawlhallaLocator.Mp3Folder);
+        var mp3 = Mp3Locator.Resolve();
+        if (!mp3.Found || mp3.Path is null)
+        {
+            return 0;
+        }
+
+        var dest = mp3.Path;
+        var restored = 0;
+        if (Directory.EnumerateFiles(dest, "*.wem").Any())
+        {
+            restored += RestoreIntoFolder(dest, "audio-pc");
+        }
+        else
+        {
+            restored += RestoreIntoFolder(dest, BrawlhallaLocator.Mp3Folder);
+        }
+
+        return restored;
     }
 
     public static int RestoreAll(string gameRoot)
     {
-        return RestoreMapArt(gameRoot) + RestoreMp3(gameRoot);
+        return RestoreMapArt(gameRoot) + RestoreMp3();
     }
 
     private static int RestoreSubfolder(string gameRoot, string gameSubfolder)
@@ -35,6 +52,35 @@ public static class VanillaReset
         {
             var relative = Path.GetRelativePath(backupRoot, backupFile);
             var (gameFile, _) = VanillaBackup.PathsUnder(gameRoot, gameSubfolder, relative);
+            var destDir = Path.GetDirectoryName(gameFile);
+            if (!string.IsNullOrEmpty(destDir))
+            {
+                Directory.CreateDirectory(destDir);
+            }
+
+            File.Copy(backupFile, gameFile, overwrite: true);
+            restored++;
+        }
+
+        return restored;
+    }
+
+    private static int RestoreIntoFolder(string destFolder, string backupSubfolder)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(destFolder);
+
+        var backupRoot = Path.GetFullPath(Path.Combine(AppPaths.BackupsRoot, backupSubfolder));
+        if (!Directory.Exists(backupRoot))
+        {
+            return 0;
+        }
+
+        var folderRoot = Path.GetFullPath(destFolder);
+        var restored = 0;
+        foreach (var backupFile in Directory.EnumerateFiles(backupRoot, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(backupRoot, backupFile);
+            var gameFile = Path.GetFullPath(Path.Combine(folderRoot, relative));
             var destDir = Path.GetDirectoryName(gameFile);
             if (!string.IsNullOrEmpty(destDir))
             {

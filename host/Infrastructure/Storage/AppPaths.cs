@@ -18,5 +18,8 @@ public static class AppPaths
     public static string SoundDownloadsFolder(int soundId) =>
         Path.Combine(Root, "downloads", "sounds", soundId.ToString());
 
+    public static string SkinDownloadsFolder(int skinId) =>
+        Path.Combine(Root, "downloads", "skins", skinId.ToString());
+
     public static string BackupsRoot => Path.Combine(Root, "backups");
 }

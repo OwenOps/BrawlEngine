@@ -3,6 +3,9 @@ export interface GameLocation {
   found: boolean;
   source: string;
   hasMapArt: boolean;
+  mp3Path?: string | null;
+  hasMp3?: boolean;
+  mp3Source?: string;
   cancelled?: boolean;
   error?: string;
 }

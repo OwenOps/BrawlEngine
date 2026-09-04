@@ -1,82 +1,99 @@
-using System.IO.Compression;
-using BrawlEngine.Host.Infrastructure.Steam;
+using BrawlEngine.Host.Domain.Models;
 
 namespace BrawlEngine.Host.Infrastructure.Apply;
 
 public static class Mp3Applier
 {
-    public static int ApplyDownloadFolder(string gameRoot, string downloadFolder)
+    public static int ApplyDownloadFolder(string audioFolder, string downloadFolder)
     {
         var applied = 0;
-        var (zips, zipError) = MapArtZipApplier.PickZips(downloadFolder);
-        if (zips.Count > 0)
+        var (archives, _) = MapArtZipApplier.PickArchives(downloadFolder);
+        foreach (var archive in archives)
         {
-            foreach (var zip in zips)
+            applied += ApplyArchive(audioFolder, archive);
+        }
+
+        foreach (var file in Directory.EnumerateFiles(downloadFolder, "*.*"))
+        {
+            if (!IsAudioFile(file))
             {
-                applied += ApplyZip(gameRoot, zip);
+                continue;
             }
-        }
 
-        foreach (var mp3 in Directory.EnumerateFiles(downloadFolder, "*.mp3"))
-        {
-            applied += ApplyMp3File(gameRoot, mp3);
-        }
-
-        if (applied == 0 && zips.Count == 0 && zipError is not null
-            && zipError.Contains("not a zip", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException(zipError);
+            applied += ApplyAudioFile(audioFolder, file);
         }
 
         return applied;
     }
 
-    public static int ApplyMp3File(string gameRoot, string sourceMp3)
+    public static int ApplyAudioFile(string audioFolder, string sourceFile)
     {
-        var name = Path.GetFileName(sourceMp3);
-        var match = FindVanillaTrack(gameRoot, name);
-        if (match is null)
+        var name = Path.GetFileName(sourceFile);
+        var match = FindVanillaTrack(audioFolder, name);
+        if (match is null || !SameFormat(sourceFile, match))
         {
             return 0;
         }
 
-        VanillaBackup.BackupMp3IfMissing(gameRoot, match);
-        var (gameFile, _) = VanillaBackup.Mp3Paths(gameRoot, match);
-        File.Copy(sourceMp3, gameFile, overwrite: true);
+        VanillaBackup.BackupAudioIfMissing(audioFolder, match);
+        var (gameFile, _) = VanillaBackup.AudioPaths(audioFolder, match);
+        File.Copy(sourceFile, gameFile, overwrite: true);
         return 1;
     }
 
-    public static int ReplaceTrack(string gameRoot, string targetFileName, string sourceMp3)
+    public static int ReplaceTrack(string audioFolder, string targetFileName, string sourceFile)
     {
-        var match = FindVanillaTrack(gameRoot, targetFileName);
+        var match = FindVanillaTrack(audioFolder, targetFileName);
         if (match is null)
         {
-            throw new InvalidOperationException("That track is not in the game mp3 folder.");
+            throw new InvalidOperationException("That track is not in the game audio folder.");
         }
 
-        VanillaBackup.BackupMp3IfMissing(gameRoot, match);
-        var (gameFile, _) = VanillaBackup.Mp3Paths(gameRoot, match);
-        File.Copy(sourceMp3, gameFile, overwrite: true);
+        EnsureSameFormat(sourceFile, match);
+        VanillaBackup.BackupAudioIfMissing(audioFolder, match);
+        var (gameFile, _) = VanillaBackup.AudioPaths(audioFolder, match);
+        File.Copy(sourceFile, gameFile, overwrite: true);
         return 1;
     }
 
-    public static IReadOnlyList<string> ListTracks(string gameRoot)
+    public static IReadOnlyList<MusicTrackDto> ListTracks(string audioFolder)
     {
-        var folder = Path.Combine(gameRoot, BrawlhallaLocator.Mp3Folder);
-        if (!Directory.Exists(folder))
-        {
-            return [];
-        }
-
-        return Directory.GetFiles(folder, "*.mp3")
-            .Select(Path.GetFileName)
-            .Where(name => !string.IsNullOrEmpty(name))
-            .Cast<string>()
-            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        return MusicTrackList.List(audioFolder);
     }
 
-    private static int ApplyZip(string gameRoot, string zipPath)
+    private static bool IsAudioFile(string path)
+    {
+        var ext = Path.GetExtension(path);
+        return ext.Equals(".wem", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".mp3", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool SameFormat(string sourceFile, string vanillaFileName)
+    {
+        var sourceExt = Path.GetExtension(sourceFile);
+        var targetExt = Path.GetExtension(vanillaFileName);
+        return string.Equals(sourceExt, targetExt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void EnsureSameFormat(string sourceFile, string vanillaFileName)
+    {
+        if (SameFormat(sourceFile, vanillaFileName))
+        {
+            return;
+        }
+
+        if (Path.GetExtension(vanillaFileName).Equals(".wem", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "This game uses Wwise .wem files in audio\\pc. An MP3 cannot replace them. Pick a .wem with the same name, or convert it first.");
+        }
+
+        throw new InvalidOperationException(
+            "The replacement file must be the same type as the in-game track ("
+            + Path.GetExtension(vanillaFileName) + ").");
+    }
+
+    private static int ApplyArchive(string audioFolder, string archivePath)
     {
         var extractRoot = Path.Combine(
             Path.GetTempPath(),
@@ -87,11 +104,16 @@ public static class Mp3Applier
 
         try
         {
-            ZipFile.ExtractToDirectory(zipPath, extractRoot, overwriteFiles: true);
+            MapArtZipApplier.ExtractArchive(archivePath, extractRoot);
             var applied = 0;
-            foreach (var file in Directory.EnumerateFiles(extractRoot, "*.mp3", SearchOption.AllDirectories))
+            foreach (var file in Directory.EnumerateFiles(extractRoot, "*.*", SearchOption.AllDirectories))
             {
-                applied += ApplyMp3File(gameRoot, file);
+                if (!IsAudioFile(file))
+                {
+                    continue;
+                }
+
+                applied += ApplyAudioFile(audioFolder, file);
             }
 
             return applied;
@@ -111,21 +133,15 @@ public static class Mp3Applier
         }
     }
 
-    private static string? FindVanillaTrack(string gameRoot, string fileName)
+    private static string? FindVanillaTrack(string audioFolder, string fileName)
     {
         var wanted = Path.GetFileName(fileName);
-        if (string.IsNullOrWhiteSpace(wanted))
+        if (string.IsNullOrWhiteSpace(wanted) || !Directory.Exists(audioFolder))
         {
             return null;
         }
 
-        var folder = Path.Combine(gameRoot, BrawlhallaLocator.Mp3Folder);
-        if (!Directory.Exists(folder))
-        {
-            return null;
-        }
-
-        foreach (var existing in Directory.GetFiles(folder, "*.mp3"))
+        foreach (var existing in Directory.GetFiles(audioFolder, "*.*"))
         {
             if (string.Equals(Path.GetFileName(existing), wanted, StringComparison.OrdinalIgnoreCase))
             {

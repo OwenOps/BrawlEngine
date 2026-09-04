@@ -9,4 +9,10 @@ public sealed record GameLocationDto(
     public bool Cancelled { get; init; }
 
     public string? Error { get; init; }
+
+    public string? Mp3Path { get; init; }
+
+    public bool HasMp3 { get; init; }
+
+    public string Mp3Source { get; init; } = "none";
 }

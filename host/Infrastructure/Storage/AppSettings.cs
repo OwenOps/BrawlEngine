@@ -8,6 +8,9 @@ public sealed class AppSettings
     [JsonPropertyName("gamePath")]
     public string? GamePath { get; set; }
 
+    [JsonPropertyName("mp3Path")]
+    public string? Mp3Path { get; set; }
+
     public static AppSettings Load()
     {
         try
