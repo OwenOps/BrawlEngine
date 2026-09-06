@@ -1,0 +1,133 @@
+<header class="page-head">
+  <div>
+    <h1>Skins</h1>
+    <p class="hint">
+      GameBanana Legend Skins. Download only — copy files into the game yourself (no auto-apply yet).
+    </p>
+  </div>
+  @if (totalCount() > 0) {
+    <p class="count">{{ totalCount() }} skins</p>
+  }
+</header>
+
+<div class="catalog-tools">
+  <input
+    type="search"
+    placeholder="Search skins"
+    [value]="queryInput()"
+    (input)="onQueryInput($event)"
+  />
+  <label>
+    Sort
+    <select [value]="sort()" (change)="onSort($event)" [disabled]="loading()">
+      @for (option of sorts; track option.id) {
+        <option [value]="option.id">{{ option.label }}</option>
+      }
+    </select>
+  </label>
+</div>
+
+@if (error(); as errorMessage) {
+  <p class="error">{{ errorMessage }}</p>
+}
+@if (loading() && items().length === 0) {
+  <div class="catalog-loader" role="status">
+    <span class="catalog-loader-spin"></span>
+    <p>Loading skins…</p>
+  </div>
+} @else if (!loading() && items().length === 0 && !error()) {
+  <p class="hint">No skins found.</p>
+}
+
+<div class="catalog-panel">
+  @if (loading() && items().length > 0) {
+    <div class="catalog-loader overlay" role="status">
+      <span class="catalog-loader-spin"></span>
+      <p>Loading skins…</p>
+    </div>
+  }
+  <div class="grid" [class.is-loading]="loading() && items().length > 0">
+  @for (item of items(); track item.id) {
+    <article class="card" [class.is-downloading]="downloadingId() === item.id">
+      <div class="thumb">
+        @if (item.thumbnailUrl) {
+          <img [src]="item.thumbnailUrl" [alt]="item.name" loading="lazy" decoding="async" />
+        } @else {
+          <div class="thumb-fallback">{{ initial(item.name) }}</div>
+        }
+        @if (isDownloaded(item.id)) {
+          <div class="badge-row">
+            <span class="badge downloaded">Downloaded</span>
+          </div>
+        }
+      </div>
+      <div class="card-body">
+        <h3 [title]="item.name">{{ item.name }}</h3>
+        <p class="author">{{ item.author }} · {{ item.category }}</p>
+        @if (downloadingId() === item.id) {
+          <div class="progress-bar" [class.indeterminate]="downloadActivity.percentFor('skins', item.id) === null">
+            <div class="progress-bar-fill" [style.width.%]="downloadActivity.percentFor('skins', item.id) ?? 100"></div>
+          </div>
+        }
+        <div class="actions">
+          @if (!isDownloaded(item.id)) {
+            <button type="button" (click)="download(item)" [disabled]="isBusy()">
+              {{ downloadingId() === item.id ? downloadLabel(item.id) : '⬇ Download' }}
+            </button>
+          } @else {
+            <button type="button" class="primary" (click)="openFolder(item)">Open folder</button>
+            <button
+              type="button"
+              class="icon-btn danger"
+              [title]="diskSize(item.id) ? 'Delete downloaded files (' + diskSize(item.id) + ')' : 'Delete downloaded files'"
+              (click)="deleteDownload(item)"
+              [disabled]="isBusy()"
+            >
+              {{ deletingId() === item.id ? '…' : '🗑' }}
+            </button>
+          }
+          <button type="button" class="icon-btn" title="Info" (click)="openInfo(item)">
+            ℹ
+          </button>
+        </div>
+        @if (diskSize(item.id); as size) {
+          <p class="note">On disk · {{ size }}</p>
+        }
+        @if (cardNote()[item.id]; as note) {
+          <p class="note">{{ note }}</p>
+        }
+      </div>
+    </article>
+  }
+</div>
+</div>
+
+@if (totalPages() > 1) {
+  <nav class="pager">
+    <button type="button" (click)="goToPage(page() - 1)" [disabled]="loading() || page() <= 1">
+      ‹ Prev
+    </button>
+    <span>Page {{ page() }} of {{ totalPages() }}</span>
+    <button type="button" (click)="goToPage(page() + 1)" [disabled]="loading() || page() >= totalPages()">
+      Next ›
+    </button>
+  </nav>
+}
+
+@if (infoItem(); as item) {
+  <div class="overlay" (click)="closeInfo()">
+    <div class="sheet" (click)="$event.stopPropagation()">
+      <h2>{{ item.name }}</h2>
+      <p class="hint">{{ item.author }} · {{ item.category }}</p>
+      <p class="hint">
+        Skins usually replace compiled game files. v1 only downloads the zip; install it by hand.
+      </p>
+      <div class="sheet-actions">
+        <button type="button" class="primary" (click)="openProfile(item.profileUrl)">
+          View on GameBanana
+        </button>
+        <button type="button" (click)="closeInfo()">Close</button>
+      </div>
+    </div>
+  </div>
+}

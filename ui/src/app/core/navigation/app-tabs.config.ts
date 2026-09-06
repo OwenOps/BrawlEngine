@@ -1,16 +1,14 @@
-import { Type } from '@angular/core';
-import { MapsPageComponent } from '../../features/maps/maps-page.component';
-import { MusicsPageComponent } from '../../features/musics/musics-page.component';
-
-export type AppTabId = 'maps' | 'musics';
+export type AppTabId = 'maps' | 'musics' | 'skins';
 
 export interface AppTabDef {
   id: AppTabId;
   label: string;
-  component: Type<unknown>;
+  icon: string;
 }
 
+/** All three pages stay mounted in app.component.html ([hidden] toggling) so filters survive tab switches. */
 export const APP_TABS: ReadonlyArray<AppTabDef> = [
-  { id: 'maps', label: 'Maps', component: MapsPageComponent },
-  { id: 'musics', label: 'Musics', component: MusicsPageComponent },
+  { id: 'maps', label: 'Maps', icon: '🗺' },
+  { id: 'musics', label: 'Musics', icon: '🎵' },
+  { id: 'skins', label: 'Skins', icon: '⚔' },
 ];
