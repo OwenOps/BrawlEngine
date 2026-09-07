@@ -21,7 +21,7 @@ public static class ModApplyService
 
         if (!HasFolder(blocked.GameRoot!, BrawlhallaLocator.MapArtFolder))
         {
-            return (false, "mapArt folder missing in the game folder.", null);
+            return (false, "mapArt folder missing. Choose the Brawlhalla game folder in the sidebar (the folder that contains mapArt).", null);
         }
 
         return ApplyMapMod(blocked.GameRoot!, modId, downloadIfMissing);
@@ -31,47 +31,70 @@ public static class ModApplyService
         int soundId,
         bool downloadIfMissing = false)
     {
-        var blocked = EnsureCanWrite();
-        if (blocked.Error is not null)
+        var musicWrite = EnsureCanWriteMusic();
+        if (musicWrite.Error is not null)
         {
-            return (false, blocked.Error, null);
+            return (false, musicWrite.Error, null);
         }
 
-        if (!HasFolder(blocked.GameRoot!, BrawlhallaLocator.Mp3Folder))
-        {
-            return (false, "mp3 folder missing in the game folder.", null);
-        }
-
-        return ApplySound(blocked.GameRoot!, soundId, downloadIfMissing);
+        return ApplySound(musicWrite.Mp3Folder!, soundId, downloadIfMissing);
     }
 
-    public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryReplaceTrack(string targetFileName)
+    public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryReplaceTrack(
+        string targetFileName,
+        string? sourceUrl = null)
     {
-        var blocked = EnsureCanWrite();
-        if (blocked.Error is not null)
+        var musicWrite = EnsureCanWriteMusic();
+        if (musicWrite.Error is not null)
         {
-            return (false, blocked.Error, null);
+            return (false, musicWrite.Error, null);
         }
 
-        if (!HasFolder(blocked.GameRoot!, BrawlhallaLocator.Mp3Folder))
+        if (!string.IsNullOrWhiteSpace(sourceUrl)
+            && Path.GetExtension(targetFileName).Equals(".wem", StringComparison.OrdinalIgnoreCase))
         {
-            return (false, "mp3 folder missing in the game folder.", null);
+            return (false, "Direct MP3 links cannot replace Wwise .wem tracks. Pick a .wem with the same name, or convert it first.", null);
         }
 
-        var picked = Mp3FilePicker.PickMp3();
-        if (string.IsNullOrEmpty(picked))
+        string? picked = null;
+        var downloaded = false;
+        if (!string.IsNullOrWhiteSpace(sourceUrl))
         {
-            return (false, "No MP3 selected.", null);
+            try
+            {
+                picked = Mp3UrlFetch.DownloadToTempAsync(sourceUrl).GetAwaiter().GetResult();
+                downloaded = true;
+            }
+            catch (Exception ex) when (
+                ex is HttpRequestException or TaskCanceledException or InvalidOperationException or IOException)
+            {
+                return (false, "Download failed: " + ex.Message, null);
+            }
+        }
+        else
+        {
+            picked = Mp3FilePicker.PickAudio(targetFileName);
+            if (string.IsNullOrEmpty(picked))
+            {
+                return (false, "No audio file selected.", null);
+            }
         }
 
         try
         {
-            Mp3Applier.ReplaceTrack(blocked.GameRoot!, targetFileName, picked);
+            Mp3Applier.ReplaceTrack(musicWrite.Mp3Folder!, targetFileName, picked);
             return (true, null, new ApplyAttemptDto(true, "Replaced " + targetFileName + "."));
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
         {
             return (false, "Replace failed: " + ex.Message, null);
+        }
+        finally
+        {
+            if (downloaded && picked is not null)
+            {
+                Mp3UrlFetch.TryDelete(picked);
+            }
         }
     }
 
@@ -125,7 +148,7 @@ public static class ModApplyService
         }
     }
 
-    public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryReapply()
+    public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryResetMap(int modId)
     {
         var blocked = EnsureCanWrite();
         if (blocked.Error is not null)
@@ -134,15 +157,73 @@ public static class ModApplyService
         }
 
         var loadout = LoadoutStore.Load();
+        if (loadout.Maps.All(entry => entry.ModId != modId))
+        {
+            return (false, "This map is not in the current loadout.", null);
+        }
+
+        try
+        {
+            var restored = VanillaReset.RestoreMapArt(blocked.GameRoot!);
+            if (restored == 0)
+            {
+                return (false, "Nothing to restore in mapArt. Apply a map first so vanilla files are backed up.", null);
+            }
+
+            LoadoutStore.RemoveMap(modId);
+            var remaining = LoadoutStore.Load().Maps;
+            foreach (var entry in remaining)
+            {
+                var result = ApplyMapMod(blocked.GameRoot!, entry.ModId, downloadIfMissing: true);
+                if (!result.Ok)
+                {
+                    return (false, result.Error ?? "Could not reapply the other maps.", null);
+                }
+            }
+
+            var extra = remaining.Count == 0
+                ? " No other maps left."
+                : " Reapplied " + remaining.Count + " other map(s).";
+            return (true, null, new ApplyAttemptDto(true, "Removed this map." + extra));
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            return (false, "Reset failed: " + ex.Message, null);
+        }
+    }
+
+    public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryReapply()
+    {
+        var loadout = LoadoutStore.Load();
         if (loadout.Maps.Count == 0 && loadout.Music.Count == 0)
         {
             return (false, "No current loadout to reapply.", null);
         }
 
+        string? gameRoot = null;
+        if (loadout.Maps.Count > 0)
+        {
+            var blocked = EnsureCanWrite();
+            if (blocked.Error is not null)
+            {
+                return (false, blocked.Error, null);
+            }
+
+            gameRoot = blocked.GameRoot;
+        }
+        else
+        {
+            var guard = BrawlhallaProcess.Check();
+            if (guard.Running)
+            {
+                return (false, guard.Message ?? "Close Brawlhalla before applying or changing game files.", null);
+            }
+        }
+
         var maps = 0;
         foreach (var entry in loadout.Maps)
         {
-            var result = ApplyMapMod(blocked.GameRoot!, entry.ModId, downloadIfMissing: true);
+            var result = ApplyMapMod(gameRoot!, entry.ModId, downloadIfMissing: true);
             if (!result.Ok)
             {
                 return (false, result.Error ?? "Reapply failed.", null);
@@ -152,9 +233,21 @@ public static class ModApplyService
         }
 
         var music = 0;
+        var mp3Folder = "";
+        if (loadout.Music.Count > 0)
+        {
+            var musicWrite = EnsureCanWriteMusic();
+            if (musicWrite.Error is not null)
+            {
+                return (false, musicWrite.Error, null);
+            }
+
+            mp3Folder = musicWrite.Mp3Folder!;
+        }
+
         foreach (var entry in loadout.Music)
         {
-            var result = ApplySound(blocked.GameRoot!, entry.ModId, downloadIfMissing: true);
+            var result = ApplySound(mp3Folder, entry.ModId, downloadIfMissing: true);
             if (!result.Ok)
             {
                 return (false, result.Error ?? "Reapply failed.", null);
@@ -183,6 +276,23 @@ public static class ModApplyService
         return (location.Path, null);
     }
 
+    private static (string? Mp3Folder, string? Error) EnsureCanWriteMusic()
+    {
+        var guard = BrawlhallaProcess.Check();
+        if (guard.Running)
+        {
+            return (null, guard.Message ?? "Close Brawlhalla before applying or changing game files.");
+        }
+
+        var mp3 = Mp3Locator.Resolve();
+        if (!mp3.Found || mp3.Path is null)
+        {
+            return (null, "Game audio folder not found. Use Set music folder (audio\\pc).");
+        }
+
+        return (mp3.Path, null);
+    }
+
     private static bool HasFolder(string gameRoot, string folder)
     {
         return Directory.Exists(Path.Combine(gameRoot, folder));
@@ -198,7 +308,7 @@ public static class ModApplyService
         {
             if (!downloadIfMissing)
             {
-                return (false, "Download this mod first.", null);
+                return (false, "Download this map first, then Apply.", null);
             }
 
             try
@@ -212,18 +322,18 @@ public static class ModApplyService
             }
         }
 
-        var (zips, zipError) = MapArtZipApplier.PickZips(AppPaths.DownloadsFolder(modId));
-        if (zipError is not null)
+        var (archives, archiveError) = MapArtZipApplier.PickArchives(AppPaths.DownloadsFolder(modId));
+        if (archiveError is not null)
         {
-            return (false, zipError, null);
+            return (false, archiveError, null);
         }
 
         try
         {
-            var count = MapArtZipApplier.ApplyZips(gameRoot, zips);
+            var count = MapArtZipApplier.ApplyArchives(gameRoot, archives);
             if (count == 0)
             {
-                return (false, "This zip has no mapArt files to apply.", null);
+                return (false, "This archive has no mapArt files. Check the pack on GameBanana or try another map.", null);
             }
 
             var reason = "Applied " + count + " file(s).";
@@ -245,7 +355,7 @@ public static class ModApplyService
     }
 
     private static (bool Ok, string? Error, ApplyAttemptDto? Result) ApplySound(
-        string gameRoot,
+        string mp3Folder,
         int soundId,
         bool downloadIfMissing)
     {
@@ -254,7 +364,7 @@ public static class ModApplyService
         {
             if (!downloadIfMissing)
             {
-                return (false, "Download this sound first.", null);
+                return (false, "Download this sound first, then Apply.", null);
             }
 
             try
@@ -270,13 +380,13 @@ public static class ModApplyService
 
         try
         {
-            var count = Mp3Applier.ApplyDownloadFolder(gameRoot, AppPaths.SoundDownloadsFolder(soundId));
+            var count = Mp3Applier.ApplyDownloadFolder(mp3Folder, AppPaths.SoundDownloadsFolder(soundId));
             if (count == 0)
             {
-                return (false, "This pack has no .mp3 that matches a file in the game mp3 folder. v1 only replaces those tracks (zip or mp3, not RAR).", null);
+                return (false, "This pack has no .wem (or .mp3) whose name matches a file in the game audio folder. Close the game if it is open, then try a Music / Win Theme pack with matching filenames.", null);
             }
 
-            var reason = "Applied " + count + " mp3 file(s).";
+            var reason = "Applied " + count + " audio file(s).";
             try
             {
                 LoadoutStore.RecordMusicApplied(soundId);

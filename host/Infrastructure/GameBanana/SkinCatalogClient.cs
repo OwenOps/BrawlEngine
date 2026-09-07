@@ -4,7 +4,7 @@ using BrawlEngine.Host.Infrastructure.Networking;
 
 namespace BrawlEngine.Host.Infrastructure.GameBanana;
 
-public static class SoundCatalogClient
+public static class SkinCatalogClient
 {
     public const int PageSize = CatalogSearch.PageSize;
 
@@ -12,17 +12,11 @@ public static class SoundCatalogClient
         int page,
         string? query,
         string? sort,
-        int categoryId = 0,
         CancellationToken cancellationToken = default)
     {
         if (page < 1)
         {
             page = 1;
-        }
-
-        if (!GameBananaIds.IsSoundCategory(categoryId))
-        {
-            categoryId = 0;
         }
 
         query = query?.Trim() ?? "";
@@ -32,29 +26,21 @@ public static class SoundCatalogClient
                     page,
                     query,
                     sort,
-                    record => CatalogSearch.IsModel(record, GameBananaIds.SoundItemType)
-                        && CatalogSearch.NameContains(record, query)
-                        && (categoryId == 0 || CatalogSearch.RootCategoryId(record) == categoryId),
+                    record => CatalogSearch.IsSkinsMod(record) && CatalogSearch.NameContains(record, query),
                     ToItem,
                     cancellationToken)
                 .ConfigureAwait(false);
         }
 
         var url =
-            "https://gamebanana.com/apiv11/Sound/Index?_nPage="
+            "https://gamebanana.com/apiv11/Mod/Index?_nPage="
             + page
             + "&_nPerpage="
             + PageSize
+            + "&_aFilters%5BGeneric_Category%5D="
+            + GameBananaIds.SkinsCategoryId
             + "&_sSort="
             + CatalogSearch.SortAlias(sort);
-        if (categoryId > 0)
-        {
-            url += "&_aFilters%5BGeneric_Category%5D=" + categoryId;
-        }
-        else
-        {
-            url += "&_aFilters%5BGeneric_Game%5D=" + GameBananaIds.BrawlhallaGameId;
-        }
 
         using var response = await AppHttp.Shared.GetAsync(url, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
@@ -75,14 +61,49 @@ public static class SoundCatalogClient
             author = authorEl.GetString() ?? "";
         }
 
-        var category = "Sounds";
-        if (record.TryGetProperty("_aRootCategory", out var cat)
-            && cat.TryGetProperty("_sName", out var catName)
-            && catName.GetString() is { Length: > 0 } n)
+        var category = GameBananaIds.SkinsCategoryName;
+        if (record.TryGetProperty("_aSubCategory", out var sub)
+            && sub.TryGetProperty("_sName", out var subName)
+            && subName.GetString() is { Length: > 0 } legend)
         {
-            category = n;
+            category = legend;
         }
 
-        return new CatalogItemDto(id, name, author, null, category, profile);
+        return new CatalogItemDto(id, name, author, ThumbnailUrl(record), category, profile);
+    }
+
+    private static string? ThumbnailUrl(JsonElement record)
+    {
+        if (!record.TryGetProperty("_aPreviewMedia", out var media)
+            || !media.TryGetProperty("_aImages", out var images)
+            || images.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        foreach (var image in images.EnumerateArray())
+        {
+            if (!image.TryGetProperty("_sBaseUrl", out var baseUrl))
+            {
+                continue;
+            }
+
+            var file = image.TryGetProperty("_sFile220", out var f220)
+                ? f220.GetString()
+                : image.TryGetProperty("_sFile100", out var f100)
+                    ? f100.GetString()
+                    : image.TryGetProperty("_sFile", out var f)
+                        ? f.GetString()
+                        : null;
+
+            if (string.IsNullOrEmpty(file))
+            {
+                continue;
+            }
+
+            return baseUrl.GetString()?.TrimEnd('/') + "/" + file;
+        }
+
+        return null;
     }
 }

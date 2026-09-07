@@ -10,5 +10,8 @@ public sealed record CatalogItemDto(
 
 public sealed record CatalogPageDto(
     IReadOnlyList<CatalogItemDto> Items,
+    int Page,
     int NextApiPage,
-    bool Complete);
+    bool Complete,
+    int TotalCount,
+    int PageSize);

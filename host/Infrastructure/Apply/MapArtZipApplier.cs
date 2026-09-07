@@ -1,5 +1,6 @@
-using System.IO.Compression;
 using BrawlEngine.Host.Infrastructure.Steam;
+using SharpCompress.Archives;
+using SharpCompress.Common;
 
 namespace BrawlEngine.Host.Infrastructure.Apply;
 
@@ -10,18 +11,23 @@ public static class MapArtZipApplier
         ".txt", ".nfo", ".md", ".url", ".html", ".htm", ".exe", ".dll", ".json",
     };
 
-    public static int ApplyZips(string gameRoot, IReadOnlyList<string> zipPaths)
+    private static readonly HashSet<string> ArchiveExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".zip", ".rar", ".7z",
+    };
+
+    public static int ApplyArchives(string gameRoot, IReadOnlyList<string> archivePaths)
     {
         var applied = 0;
-        foreach (var zip in zipPaths)
+        foreach (var archive in archivePaths)
         {
-            applied += ApplyZip(gameRoot, zip);
+            applied += ApplyArchive(gameRoot, archive);
         }
 
         return applied;
     }
 
-    public static int ApplyZip(string gameRoot, string zipPath)
+    public static int ApplyArchive(string gameRoot, string archivePath)
     {
         var extractRoot = Path.Combine(
             Path.GetTempPath(),
@@ -32,7 +38,7 @@ public static class MapArtZipApplier
 
         try
         {
-            ZipFile.ExtractToDirectory(zipPath, extractRoot, overwriteFiles: true);
+            ExtractArchive(archivePath, extractRoot);
             var contentRoot = UnwrapContentRoot(extractRoot, MapArtTopLevelNames(gameRoot));
             var applied = 0;
 
@@ -80,30 +86,88 @@ public static class MapArtZipApplier
         }
     }
 
-    public static (IReadOnlyList<string> Zips, string? Error) PickZips(string downloadFolder)
+    public static (IReadOnlyList<string> Archives, string? Error) PickArchives(string downloadFolder)
     {
-        var files = Directory.GetFiles(downloadFolder);
-        var zips = files
-            .Where(path => path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        var archives = Directory.GetFiles(downloadFolder)
+            .Where(path => ArchiveExtensions.Contains(Path.GetExtension(path)))
             .ToList();
-        var hasOtherArchive = files.Any(path =>
-            path.EndsWith(".rar", StringComparison.OrdinalIgnoreCase)
-            || path.EndsWith(".7z", StringComparison.OrdinalIgnoreCase));
 
-        if (zips.Count == 0)
+        if (archives.Count == 0)
         {
-            if (hasOtherArchive)
-            {
-                return ([], "This archive is not a zip. v1 supports zip only.");
-            }
-
-            return ([], "No zip archive found. Download this mod first.");
+            return ([], "No archive found. Download this mod first, then Apply.");
         }
 
-        var copyPaste = zips
+        var copyPaste = archives
             .Where(path => !Path.GetFileName(path).Contains("bmod", StringComparison.OrdinalIgnoreCase))
             .ToList();
-        return copyPaste.Count > 0 ? (copyPaste, null) : (zips, null);
+        return copyPaste.Count > 0 ? (copyPaste, null) : (archives, null);
+    }
+
+    /// <summary>
+    /// Counts distinct map identifiers in a download folder's archive(s), so the UI can tell a
+    /// single-map mod from a pack. Heuristic: mapArt files sharing a base name (across Backgrounds /
+    /// Foregrounds / Thumbnails / BoneStructure) belong to the same map. Returns null if unknown.
+    /// </summary>
+    public static int? CountMaps(string downloadFolder)
+    {
+        if (!Directory.Exists(downloadFolder))
+        {
+            return null;
+        }
+
+        var (archives, error) = PickArchives(downloadFolder);
+        if (error is not null || archives.Count == 0)
+        {
+            return null;
+        }
+
+        var baseNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            foreach (var path in archives)
+            {
+                using var archive = ArchiveFactory.OpenArchive(path);
+                foreach (var entry in archive.Entries)
+                {
+                    if (entry.IsDirectory || string.IsNullOrEmpty(entry.Key))
+                    {
+                        continue;
+                    }
+
+                    if (SkipExtensions.Contains(Path.GetExtension(entry.Key)))
+                    {
+                        continue;
+                    }
+
+                    baseNames.Add(Path.GetFileNameWithoutExtension(entry.Key));
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or ExtractionException)
+        {
+            return null;
+        }
+
+        return baseNames.Count == 0 ? null : baseNames.Count;
+    }
+
+    /// <summary>Shared by <see cref="Mp3Applier"/> too — any GameBanana archive format, not just zip.</summary>
+    internal static void ExtractArchive(string archivePath, string extractRoot)
+    {
+        using var archive = ArchiveFactory.OpenArchive(archivePath);
+        foreach (var entry in archive.Entries)
+        {
+            if (entry.IsDirectory)
+            {
+                continue;
+            }
+
+            entry.WriteToDirectory(extractRoot, new ExtractionOptions
+            {
+                ExtractFullPath = true,
+                Overwrite = true,
+            });
+        }
     }
 
     private static HashSet<string> MapArtTopLevelNames(string gameRoot)

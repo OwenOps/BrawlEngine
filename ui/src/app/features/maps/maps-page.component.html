@@ -1,44 +1,176 @@
-<h1>Maps</h1>
-<p class="hint">Brawlhalla Realms from GameBanana. Download, then Apply.</p>
+<header class="page-head">
+  <div>
+    <h1>Maps</h1>
+    <p class="hint">Brawlhalla Realms from GameBanana. Download, then Apply.</p>
+  </div>
+  @if (isLibrary()) {
+    <p class="count">{{ shownItems().length }} {{ libraryFilter() === 'disk' ? 'on disk' : 'applied' }}</p>
+  } @else if (totalCount() > 0) {
+    <p class="count">{{ totalCount() }} realms</p>
+  }
+</header>
+
+<div class="catalog-tools">
+  <input
+    type="search"
+    placeholder="Search maps (e.g. Brawlhaven)"
+    [value]="queryInput()"
+    (input)="onQueryInput($event)"
+  />
+  <label>
+    Sort
+    <select [value]="sort()" (change)="onSort($event)" [disabled]="loading() || isLibrary()">
+      @for (option of sorts; track option.id) {
+        <option [value]="option.id">{{ option.label }}</option>
+      }
+    </select>
+  </label>
+</div>
+
+<div class="filter-bar">
+  <span class="filter-label">Show</span>
+  <div class="slot-filters">
+    @for (option of libraryFilters; track option.id) {
+      <button
+        type="button"
+        class="chip"
+        [class.active]="libraryFilter() === option.id"
+        (click)="setLibraryFilter(option.id)"
+      >
+        {{ option.label }}
+      </button>
+    }
+  </div>
+</div>
+
 @if (error(); as errorMessage) {
   <p class="error">{{ errorMessage }}</p>
 }
-@if (loading() && items().length === 0) {
-  <p>Loading…</p>
+@if (loading() && shownItems().length === 0) {
+  <div class="catalog-loader" role="status">
+    <span class="catalog-loader-spin"></span>
+    <p>Loading maps…</p>
+  </div>
+} @else if (!loading() && shownItems().length === 0 && !error()) {
+  @if (libraryFilter() === 'disk') {
+    <p class="hint">Nothing on disk yet. Download a map first.</p>
+  } @else if (libraryFilter() === 'applied') {
+    <p class="hint">No maps in the current loadout.</p>
+  } @else {
+    <p class="hint">No realms found.</p>
+  }
 }
-<div class="grid">
-  @for (mod of items(); track mod.id) {
-    <article class="card">
-      @if (mod.thumbnailUrl) {
-        <img [src]="mod.thumbnailUrl" [alt]="mod.name" />
-      }
-      <h3>{{ mod.name }}</h3>
-      <p>{{ mod.author }}</p>
-      @if (isActive(mod.id)) {
-        <p class="active">Active</p>
-      }
-      <button
-        type="button"
-        (click)="download(mod)"
-        [disabled]="isBusy()"
-      >
-        {{ downloadingId() === mod.id ? 'Downloading…' : 'Download' }}
-      </button>
-      <button
-        type="button"
-        (click)="apply(mod)"
-        [disabled]="isBusy()"
-      >
-        {{ applyingId() === mod.id ? 'Applying…' : 'Apply' }}
-      </button>
-      @if (cardNote()[mod.id]; as note) {
-        <p>{{ note }}</p>
-      }
+
+<div class="catalog-panel">
+  @if (loading() && shownItems().length > 0) {
+    <div class="catalog-loader overlay" role="status">
+      <span class="catalog-loader-spin"></span>
+      <p>Loading maps…</p>
+    </div>
+  }
+  <div class="grid" [class.is-loading]="loading() && shownItems().length > 0">
+  @for (mod of shownItems(); track mod.id) {
+    <article class="card" [class.is-downloading]="downloadingId() === mod.id">
+      <div class="thumb">
+        @if (mod.thumbnailUrl) {
+          <img [src]="mod.thumbnailUrl" [alt]="mod.name" loading="lazy" decoding="async" />
+        } @else {
+          <div class="thumb-fallback">{{ initial(mod.name) }}</div>
+        }
+        <div class="badge-row">
+          @if (isActive(mod.id)) {
+            <span class="badge">Active</span>
+          } @else if (isDownloaded(mod.id)) {
+            <span class="badge downloaded">Downloaded</span>
+          }
+          @if (packLabel(mod.id); as pack) {
+            <span class="badge pack">{{ pack }}</span>
+          }
+        </div>
+      </div>
+      <div class="card-body">
+        <h3 [title]="mod.name">{{ mod.name }}</h3>
+        <p class="author">{{ mod.author }}</p>
+        @if (downloadingId() === mod.id) {
+          <div class="progress-bar" [class.indeterminate]="downloadPercent(mod.id) === null">
+            <div class="progress-bar-fill" [style.width.%]="downloadPercent(mod.id) ?? 100"></div>
+          </div>
+        }
+        <div class="actions">
+          @if (!isDownloaded(mod.id)) {
+            <button type="button" (click)="download(mod)" [disabled]="isBusy()">
+              {{ downloadingId() === mod.id ? downloadLabel(mod.id) : '⬇ Download' }}
+            </button>
+          } @else {
+            <button type="button" class="primary" (click)="apply(mod)" [disabled]="isBusy()">
+              {{
+                applyingId() === mod.id
+                  ? 'Applying…'
+                  : isActive(mod.id)
+                    ? '↻ Re-apply'
+                    : '✓ Apply'
+              }}
+            </button>
+            @if (isActive(mod.id)) {
+              <button
+                type="button"
+                class="danger"
+                (click)="reset(mod)"
+                [disabled]="isBusy()"
+              >
+                {{ resettingId() === mod.id ? 'Resetting…' : 'Reset' }}
+              </button>
+            }
+            <button
+              type="button"
+              class="icon-btn danger"
+              [title]="diskSize(mod.id) ? 'Delete downloaded files (' + diskSize(mod.id) + ')' : 'Delete downloaded files (keeps it applied in-game)'"
+              (click)="deleteDownload(mod)"
+              [disabled]="isBusy()"
+            >
+              {{ deletingId() === mod.id ? '…' : '🗑' }}
+            </button>
+          }
+          <button type="button" class="icon-btn" title="Info" (click)="openInfo(mod)">
+            ℹ
+          </button>
+        </div>
+        @if (diskSize(mod.id); as size) {
+          <p class="note">On disk · {{ size }}</p>
+        }
+        @if (cardNote()[mod.id]; as note) {
+          <p class="note">{{ note }}</p>
+        }
+      </div>
     </article>
   }
 </div>
-@if (canLoadMore()) {
-  <button type="button" (click)="loadMore()" [disabled]="loading()">
-    {{ loading() ? 'Loading…' : 'Load more' }}
-  </button>
+</div>
+
+@if (!isLibrary() && totalPages() > 1) {
+  <nav class="pager">
+    <button type="button" (click)="goToPage(page() - 1)" [disabled]="loading() || page() <= 1">
+      ‹ Prev
+    </button>
+    <span>Page {{ page() }} of {{ totalPages() }}</span>
+    <button type="button" (click)="goToPage(page() + 1)" [disabled]="loading() || page() >= totalPages()">
+      Next ›
+    </button>
+  </nav>
+}
+
+@if (infoItem(); as item) {
+  <div class="overlay" (click)="closeInfo()">
+    <div class="sheet" (click)="$event.stopPropagation()">
+      <h2>{{ item.name }}</h2>
+      <p class="hint">{{ item.author }} · {{ item.category }}</p>
+      <p class="hint">Maps on this tab come from GameBanana Realms.</p>
+      <div class="sheet-actions">
+        <button type="button" class="primary" (click)="openProfile(item.profileUrl)">
+          View on GameBanana
+        </button>
+        <button type="button" (click)="closeInfo()">Close</button>
+      </div>
+    </div>
+  </div>
 }

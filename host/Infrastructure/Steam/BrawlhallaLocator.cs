@@ -11,6 +11,11 @@ public static class BrawlhallaLocator
     public const string MapArtFolder = "mapArt";
     public const string Mp3Folder = "mp3";
 
+    public static string AudioPcPath(string gameRoot)
+    {
+        return Path.Combine(gameRoot, "audio", "pc");
+    }
+
     public static GameLocationDto Resolve()
     {
         var settings = AppSettings.Load();

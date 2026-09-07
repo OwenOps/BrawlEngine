@@ -31,9 +31,9 @@ public static class VanillaBackup
         return BackupIfMissing(gameFile, backupFile);
     }
 
-    public static bool BackupMp3IfMissing(string gameRoot, string fileName)
+    public static bool BackupAudioIfMissing(string audioFolder, string fileName)
     {
-        var (gameFile, backupFile) = PathsUnder(gameRoot, BrawlhallaLocator.Mp3Folder, fileName);
+        var (gameFile, backupFile) = AudioPaths(audioFolder, fileName);
         return BackupIfMissing(gameFile, backupFile);
     }
 
@@ -42,9 +42,24 @@ public static class VanillaBackup
         return PathsUnder(gameRoot, BrawlhallaLocator.MapArtFolder, relativeUnderMapArt);
     }
 
-    public static (string GameFile, string BackupFile) Mp3Paths(string gameRoot, string fileName)
+    public static (string GameFile, string BackupFile) AudioPaths(string audioFolder, string fileName)
     {
-        return PathsUnder(gameRoot, BrawlhallaLocator.Mp3Folder, fileName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(audioFolder);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+
+        var name = Path.GetFileName(fileName);
+        var folderRoot = Path.GetFullPath(audioFolder);
+        var gameFile = Path.GetFullPath(Path.Combine(folderRoot, name));
+        EnsureUnder(folderRoot, gameFile);
+
+        var backupSub = Path.GetExtension(name).Equals(".wem", StringComparison.OrdinalIgnoreCase)
+            ? "audio-pc"
+            : BrawlhallaLocator.Mp3Folder;
+        var backupRoot = Path.GetFullPath(Path.Combine(AppPaths.BackupsRoot, backupSub));
+        var backupFile = Path.GetFullPath(Path.Combine(backupRoot, name));
+        EnsureUnder(backupRoot, backupFile);
+
+        return (gameFile, backupFile);
     }
 
     public static (string GameFile, string BackupFile) PathsUnder(

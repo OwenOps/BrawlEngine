@@ -6,51 +6,47 @@ namespace BrawlEngine.Host.Infrastructure.GameBanana;
 
 public static class RealmCatalogClient
 {
-    public const int PageSize = 15;
+    public const int PageSize = CatalogSearch.PageSize;
 
-    private const string IndexUrl =
-        "https://gamebanana.com/apiv11/Mod/Index?_nPage={0}&_nPerpage=15&_aFilters%5BGeneric_Category%5D=6463";
-
-    public static async Task<CatalogPageDto> ListAsync(int page, CancellationToken cancellationToken = default)
+    public static async Task<CatalogPageDto> ListAsync(
+        int page,
+        string? query,
+        string? sort,
+        CancellationToken cancellationToken = default)
     {
         if (page < 1)
         {
             page = 1;
         }
 
-        using var response = await AppHttp.Shared.GetAsync(string.Format(IndexUrl, page), cancellationToken)
-            .ConfigureAwait(false);
+        query = query?.Trim() ?? "";
+        if (query.Length >= 2)
+        {
+            return await CatalogSearch.SearchAsync(
+                    page,
+                    query,
+                    sort,
+                    record => CatalogSearch.IsRealmsMod(record) && CatalogSearch.NameContains(record, query),
+                    ToItem,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        var url =
+            "https://gamebanana.com/apiv11/Mod/Index?_nPage="
+            + page
+            + "&_nPerpage="
+            + PageSize
+            + "&_aFilters%5BGeneric_Category%5D="
+            + GameBananaIds.RealmsCategoryId
+            + "&_sSort="
+            + CatalogSearch.SortAlias(sort);
+
+        using var response = await AppHttp.Shared.GetAsync(url, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
-        var root = doc.RootElement;
-
-        var complete = false;
-        if (root.TryGetProperty("_aMetadata", out var meta)
-            && meta.TryGetProperty("_bIsComplete", out var done))
-        {
-            complete = done.GetBoolean();
-        }
-
-        var items = new List<CatalogItemDto>();
-        if (root.TryGetProperty("_aRecords", out var records) && records.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var record in records.EnumerateArray())
-            {
-                items.Add(ToItem(record));
-            }
-
-            if (items.Count <= PageSize)
-            {
-                complete = true;
-            }
-        }
-        else
-        {
-            complete = true;
-        }
-
-        return new CatalogPageDto(items, page + 1, complete);
+        return CatalogSearch.ParseIndex(doc.RootElement, page, ToItem);
     }
 
     private static CatalogItemDto ToItem(JsonElement record)

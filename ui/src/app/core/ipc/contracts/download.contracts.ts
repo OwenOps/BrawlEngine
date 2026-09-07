@@ -9,3 +9,26 @@ export interface DownloadResult {
   folder: string;
   files: DownloadedFile[];
 }
+
+export interface LocalDownload {
+  id: number;
+  folder: string;
+  mapCount?: number | null;
+  sizeBytes?: number;
+}
+
+export interface LocalDownloadList {
+  items: LocalDownload[];
+}
+
+export type DownloadKind = 'maps' | 'sounds' | 'skins';
+
+export interface DownloadProgress {
+  kind: DownloadKind;
+  id: number;
+  fileName: string;
+  fileIndex: number;
+  fileCount: number;
+  bytesDownloaded: number;
+  totalBytes: number;
+}
