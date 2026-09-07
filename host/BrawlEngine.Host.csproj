@@ -8,14 +8,19 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>BrawlEngine.Host</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Photino.NET" Version="4.0.16" />
+    <PackageReference Include="SharpCompress" Version="0.50.4" />
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="wwwroot\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Assets\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
