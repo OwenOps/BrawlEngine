@@ -16,6 +16,8 @@ internal static class Program
                 uiPath);
         }
 
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
+
         var window = new PhotinoWindow()
             .SetTitle("BrawlEngine")
             .SetUseOsDefaultSize(false)
@@ -23,9 +25,21 @@ internal static class Program
             .SetMinSize(800, 560)
             .Center()
             .SetResizable(true)
+            .SetIconFile(iconPath)
             .RegisterWebMessageReceivedHandler((sender, message) =>
             {
-                IpcRouter.Handle((PhotinoWindow)sender!, message);
+                var window = (PhotinoWindow)sender!;
+                _ = Task.Run(() =>
+                {
+                    try
+                    {
+                        IpcRouter.Handle(window, message);
+                    }
+                    catch
+                    {
+                        // One failed IPC must not close the window.
+                    }
+                });
             })
             .Load(uiPath);
 

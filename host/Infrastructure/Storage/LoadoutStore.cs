@@ -63,6 +63,12 @@ public static class LoadoutStore
         return next;
     }
 
+    public static void RemoveMap(int modId)
+    {
+        var current = Load();
+        Save(current with { Maps = current.Maps.Where(entry => entry.ModId != modId).ToList() });
+    }
+
     public static void ClearMaps()
     {
         var current = Load();

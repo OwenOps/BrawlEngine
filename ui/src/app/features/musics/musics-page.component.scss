@@ -1,60 +1,97 @@
-.hint,
-.error {
-  font-size: 0.875rem;
+:host {
+  display: block;
+  padding-bottom: 1.5rem;
 }
 
 .custom {
-  margin: 1rem 0;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid #333;
+  margin: 0 0 1.1rem;
+  padding: 0.85rem 1rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 
-h2 {
-  margin: 0 0 0.5rem;
-  font-size: 1rem;
+.custom h2 {
+  margin: 0 0 0.3rem;
+  font-size: 0.85rem;
 }
 
-label {
+.custom-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
-  margin: 0.5rem 0;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
 }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
-  gap: 1rem;
-  margin: 1rem 0;
+.custom-row input[type='url'] {
+  flex: 1 1 16rem;
+  min-width: 12rem;
 }
 
-.card {
-  margin: 0;
-  padding: 0 0 0.75rem;
-  border: 1px solid #333;
-  overflow: hidden;
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem 0.7rem;
+  margin: 0 0 1rem;
+  padding: 0.55rem 0.7rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 
-h3,
-p {
-  margin: 0.5rem 0.75rem 0;
-  font-size: 0.875rem;
+.filter-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
 }
 
-h3 {
-  font-size: 0.95rem;
+.slot-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
 }
 
-.active {
+.chip {
+  border-radius: 999px;
+  font-size: 0.75rem;
+  color: var(--muted);
+  background: transparent;
+}
+
+.chip.active {
+  border-color: var(--page-accent, var(--accent));
+  background: color-mix(in srgb, var(--page-accent, var(--accent)) 22%, transparent);
+  color: var(--text);
   font-weight: 600;
 }
 
-button {
-  font: inherit;
-  margin: 0.5rem 0.75rem 0;
+.sound-main .progress-bar {
+  margin-top: 0.35rem;
+  max-width: 16rem;
 }
 
-.custom button {
-  margin-left: 0;
+.slot-tag {
+  margin: 0.25rem 0 0;
+  font-size: 0.72rem;
+  color: var(--accent);
+}
+
+.steps {
+  margin: 0.4rem 0 0.75rem;
+  padding-left: 1.2rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.steps li {
+  margin: 0.2rem 0;
+}
+
+.steps code {
+  font-size: 0.85em;
 }
