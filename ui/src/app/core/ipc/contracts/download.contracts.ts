@@ -17,6 +17,10 @@ export interface LocalDownload {
   sizeBytes?: number;
 }
 
+export interface MapNamesResult {
+  names: string[];
+}
+
 export interface LocalDownloadList {
   items: LocalDownload[];
 }

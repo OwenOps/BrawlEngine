@@ -4,6 +4,9 @@
     <p class="hint">
       GameBanana Legend Skins. Download only — copy files into the game yourself (no auto-apply yet).
     </p>
+    <button type="button" class="link" (click)="openDownloadsFolder()">
+      Open downloads folder
+    </button>
   </div>
   @if (totalCount() > 0) {
     <p class="count">{{ totalCount() }} skins</p>
@@ -13,6 +16,7 @@
 <div class="catalog-tools">
   <input
     type="search"
+    aria-label="Search skins"
     placeholder="Search skins"
     [value]="queryInput()"
     (input)="onQueryInput($event)"
@@ -28,21 +32,26 @@
 </div>
 
 @if (error(); as errorMessage) {
-  <p class="error">{{ errorMessage }}</p>
+  <div class="error-block" role="alert">
+    <p class="error">{{ errorMessage }}</p>
+    <button type="button" (click)="retry()" [disabled]="loading()">Retry</button>
+  </div>
 }
 @if (loading() && items().length === 0) {
-  <div class="catalog-loader" role="status">
-    <span class="catalog-loader-spin"></span>
+  <div class="catalog-loader" role="status" aria-live="polite">
+    <span class="catalog-loader-spin" aria-hidden="true"></span>
     <p>Loading skins…</p>
   </div>
 } @else if (!loading() && items().length === 0 && !error()) {
-  <p class="hint">No skins found.</p>
+  <div class="empty-state">
+    <p class="hint">No skins found.</p>
+  </div>
 }
 
 <div class="catalog-panel">
   @if (loading() && items().length > 0) {
     <div class="catalog-loader overlay" role="status">
-      <span class="catalog-loader-spin"></span>
+      <span class="catalog-loader-spin" aria-hidden="true"></span>
       <p>Loading skins…</p>
     </div>
   }
@@ -60,6 +69,9 @@
             <span class="badge downloaded">Downloaded</span>
           </div>
         }
+        <button type="button" class="thumb-info" title="Info" [attr.aria-label]="'Info for ' + item.name" (click)="openInfo(item)">
+          ℹ
+        </button>
       </div>
       <div class="card-body">
         <h3 [title]="item.name">{{ item.name }}</h3>
@@ -71,24 +83,24 @@
         }
         <div class="actions">
           @if (!isDownloaded(item.id)) {
-            <button type="button" (click)="download(item)" [disabled]="isBusy()">
+            <button type="button" class="primary wide" (click)="download(item)" [disabled]="isBusy()">
               {{ downloadingId() === item.id ? downloadLabel(item.id) : '⬇ Download' }}
             </button>
           } @else {
-            <button type="button" class="primary" (click)="openFolder(item)">Open folder</button>
-            <button
-              type="button"
-              class="icon-btn danger"
-              [title]="diskSize(item.id) ? 'Delete downloaded files (' + diskSize(item.id) + ')' : 'Delete downloaded files'"
-              (click)="deleteDownload(item)"
-              [disabled]="isBusy()"
-            >
-              {{ deletingId() === item.id ? '…' : '🗑' }}
-            </button>
+            <div class="actions-row">
+              <button type="button" class="primary" (click)="openFolder(item)">Open folder</button>
+              <button
+                type="button"
+                class="icon-btn danger"
+                aria-label="Delete downloaded files"
+                [title]="diskSize(item.id) ? 'Delete downloaded files (' + diskSize(item.id) + ')' : 'Delete downloaded files'"
+                (click)="deleteDownload(item)"
+                [disabled]="isBusy()"
+              >
+                {{ deletingId() === item.id ? '…' : '🗑' }}
+              </button>
+            </div>
           }
-          <button type="button" class="icon-btn" title="Info" (click)="openInfo(item)">
-            ℹ
-          </button>
         </div>
         @if (diskSize(item.id); as size) {
           <p class="note">On disk · {{ size }}</p>
@@ -103,7 +115,7 @@
 </div>
 
 @if (totalPages() > 1) {
-  <nav class="pager">
+  <nav class="pager" aria-label="Skins catalog pagination">
     <button type="button" (click)="goToPage(page() - 1)" [disabled]="loading() || page() <= 1">
       ‹ Prev
     </button>
@@ -116,8 +128,8 @@
 
 @if (infoItem(); as item) {
   <div class="overlay" (click)="closeInfo()">
-    <div class="sheet" (click)="$event.stopPropagation()">
-      <h2>{{ item.name }}</h2>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="skin-info-title" (click)="$event.stopPropagation()">
+      <h2 id="skin-info-title">{{ item.name }}</h2>
       <p class="hint">{{ item.author }} · {{ item.category }}</p>
       <p class="hint">
         Skins usually replace compiled game files. v1 only downloads the zip; install it by hand.

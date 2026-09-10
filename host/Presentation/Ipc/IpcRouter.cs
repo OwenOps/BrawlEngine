@@ -57,6 +57,8 @@ public static class IpcRouter
             "skin.download" => DownloadSkin(window, request),
             "downloads.list" => ListDownloads(request),
             "downloads.delete" => DeleteDownload(request),
+            "downloads.open" => OpenDownloads(request),
+            "mod.mapNames" => MapNames(request),
             "mod.apply" => ApplyMod(request),
             "mod.reset" => ResetMap(request),
             "music.apply" => ApplySound(request),
@@ -80,6 +82,37 @@ public static class IpcRouter
         };
 
         window.SendWebMessage(JsonSerializer.Serialize(reply, JsonOptions));
+    }
+
+    /// <summary>UI loading spinners wait forever unless every request gets a reply, even after a crash.</summary>
+    public static void SendFailure(PhotinoWindow window, string raw, string error)
+    {
+        var id = "";
+        var type = "error";
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            if (doc.RootElement.TryGetProperty("id", out var idEl))
+            {
+                id = idEl.GetString() ?? "";
+            }
+
+            if (doc.RootElement.TryGetProperty("type", out var typeEl))
+            {
+                type = typeEl.GetString() ?? "error";
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        window.SendWebMessage(JsonSerializer.Serialize(new IpcEnvelope
+        {
+            Id = id,
+            Type = type,
+            Ok = false,
+            Error = error,
+        }, JsonOptions));
     }
 
     private static IpcEnvelope Pong(IpcEnvelope request)
@@ -325,6 +358,25 @@ public static class IpcRouter
             Type = request.Type,
             Ok = true,
             Payload = JsonSerializer.SerializeToElement(list, JsonOptions),
+        };
+    }
+
+    /// <summary>Lists the mapArt base names inside a downloaded pack, so the UI can show which maps it contains.</summary>
+    private static IpcEnvelope MapNames(IpcEnvelope request)
+    {
+        var id = ReadId(request);
+        if (id <= 0)
+        {
+            return MissingId(request);
+        }
+
+        var names = MapArtZipApplier.ListMapNames(AppPaths.DownloadsFolder(id));
+        return new IpcEnvelope
+        {
+            Id = request.Id,
+            Type = request.Type,
+            Ok = true,
+            Payload = JsonSerializer.SerializeToElement(new { names = names ?? [] }, JsonOptions),
         };
     }
 
@@ -577,11 +629,29 @@ public static class IpcRouter
             };
         }
 
+        return LaunchExplorer(request, full);
+    }
+
+    private static IpcEnvelope OpenDownloads(IpcEnvelope request)
+    {
+        var kind = ReadString(request, "kind");
+        if (kind != "maps" && kind != "sounds" && kind != "skins")
+        {
+            kind = "maps";
+        }
+
+        var folder = DownloadInventory.KindFolder(kind);
+        Directory.CreateDirectory(folder);
+        return LaunchExplorer(request, folder);
+    }
+
+    private static IpcEnvelope LaunchExplorer(IpcEnvelope request, string folder)
+    {
         try
         {
             Process.Start(new ProcessStartInfo
             {
-                FileName = full,
+                FileName = folder,
                 UseShellExecute = true,
             });
         }

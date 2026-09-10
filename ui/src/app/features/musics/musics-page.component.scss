@@ -29,47 +29,6 @@
   min-width: 12rem;
 }
 
-.filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.15rem 0.7rem;
-  margin: 0 0 1rem;
-  padding: 0.55rem 0.7rem;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
-
-.filter-label {
-  font-size: 0.68rem;
-  font-weight: 700;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  white-space: nowrap;
-}
-
-.slot-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.chip {
-  border-radius: 999px;
-  font-size: 0.75rem;
-  color: var(--muted);
-  background: transparent;
-}
-
-.chip.active {
-  border-color: var(--page-accent, var(--accent));
-  background: color-mix(in srgb, var(--page-accent, var(--accent)) 22%, transparent);
-  color: var(--text);
-  font-weight: 600;
-}
-
 .sound-main .progress-bar {
   margin-top: 0.35rem;
   max-width: 16rem;
@@ -94,4 +53,15 @@
 
 .steps code {
   font-size: 0.85em;
+}
+
+@media (max-height: 600px) {
+  .custom {
+    margin-bottom: 0.7rem;
+    padding: 0.65rem 0.8rem;
+  }
+
+  .steps {
+    margin-bottom: 0.5rem;
+  }
 }

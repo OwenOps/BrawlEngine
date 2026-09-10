@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  HostListener,
   OnDestroy,
   computed,
   inject,
@@ -114,6 +115,10 @@ export class SkinsPageComponent implements OnDestroy {
     scrollMainToTop();
   }
 
+  retry(): void {
+    this.load(this.page());
+  }
+
   openInfo(item: CatalogItem): void {
     this.infoItem.set(item);
   }
@@ -122,8 +127,19 @@ export class SkinsPageComponent implements OnDestroy {
     this.infoItem.set(null);
   }
 
+  @HostListener('document:keydown.escape')
+  closeInfoOnEscape(): void {
+    if (this.infoItem()) {
+      this.closeInfo();
+    }
+  }
+
   openProfile(url: string): void {
     this.browser.open(url);
+  }
+
+  openDownloadsFolder(): void {
+    this.browser.openDownloads('skins');
   }
 
   download(item: CatalogItem): void {

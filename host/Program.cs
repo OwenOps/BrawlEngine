@@ -35,9 +35,16 @@ internal static class Program
                     {
                         IpcRouter.Handle(window, message);
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // One failed IPC must not close the window.
+                        try
+                        {
+                            IpcRouter.SendFailure(window, message, "Host failed: " + ex.Message);
+                        }
+                        catch
+                        {
+                            // Last resort: never take down the window.
+                        }
                     }
                 });
             })

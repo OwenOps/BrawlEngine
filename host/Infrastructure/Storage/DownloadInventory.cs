@@ -8,15 +8,23 @@ public static class DownloadInventory
     {
         return kind switch
         {
-            "sounds" => ListUnder(Path.Combine(AppPaths.Root, "downloads", "sounds")),
-            "skins" => ListUnder(Path.Combine(AppPaths.Root, "downloads", "skins")),
+            "sounds" => ListUnder(AppPaths.SoundDownloadsRoot),
+            "skins" => ListUnder(AppPaths.SkinDownloadsRoot),
             _ => ListMaps(),
         };
     }
 
+    public static string KindFolder(string kind) =>
+        kind switch
+        {
+            "sounds" => AppPaths.SoundDownloadsRoot,
+            "skins" => AppPaths.SkinDownloadsRoot,
+            _ => AppPaths.DownloadsRoot,
+        };
+
     private static LocalDownloadListDto ListMaps()
     {
-        var root = Path.Combine(AppPaths.Root, "downloads");
+        var root = AppPaths.DownloadsRoot;
         if (!Directory.Exists(root))
         {
             return new LocalDownloadListDto([]);

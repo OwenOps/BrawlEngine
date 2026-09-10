@@ -61,6 +61,9 @@
       GameBanana Sounds. Apply copies files whose names match a vanilla track (.wem in audio\pc, or .mp3 on old installs).
       Filter by GameBanana category (Music, Win Theme, Announcer, …).
     </p>
+    <button type="button" class="link" (click)="openDownloadsFolder()">
+      Open downloads folder
+    </button>
   </div>
   @if (isLibrary()) {
     <p class="count">{{ shownItems().length }} {{ libraryFilter() === 'disk' ? 'on disk' : 'applied' }}</p>
@@ -72,6 +75,7 @@
 <div class="catalog-tools">
   <input
     type="search"
+    aria-label="Search sounds"
     placeholder="Search sounds"
     [value]="queryInput()"
     (input)="onQueryInput($event)"
@@ -94,6 +98,7 @@
         type="button"
         class="chip"
         [class.active]="libraryFilter() === option.id"
+        [attr.aria-pressed]="libraryFilter() === option.id"
         (click)="setLibraryFilter(option.id)"
       >
         {{ option.label }}
@@ -109,6 +114,7 @@
       type="button"
       class="chip"
       [class.active]="categoryId() === 0"
+      [attr.aria-pressed]="categoryId() === 0"
       (click)="setCategoryFilter(0)"
     >
       All
@@ -118,6 +124,7 @@
         type="button"
         class="chip"
         [class.active]="categoryId() === cat.id"
+        [attr.aria-pressed]="categoryId() === cat.id"
         (click)="setCategoryFilter(cat.id)"
       >
         {{ cat.label }}
@@ -127,27 +134,32 @@
 </div>
 
 @if (error(); as errorMessage) {
-  <p class="error">{{ errorMessage }}</p>
+  <div class="error-block" role="alert">
+    <p class="error">{{ errorMessage }}</p>
+    <button type="button" (click)="retry()" [disabled]="loading()">Retry</button>
+  </div>
 }
 @if (loading() && shownItems().length === 0) {
-  <div class="catalog-loader" role="status">
-    <span class="catalog-loader-spin"></span>
+  <div class="catalog-loader" role="status" aria-live="polite">
+    <span class="catalog-loader-spin" aria-hidden="true"></span>
     <p>Loading sounds…</p>
   </div>
 } @else if (!loading() && shownItems().length === 0 && !error()) {
-  @if (libraryFilter() === 'disk') {
-    <p class="hint">Nothing on disk yet. Download a sound first.</p>
-  } @else if (libraryFilter() === 'applied') {
-    <p class="hint">No sounds in the current loadout.</p>
-  } @else {
-    <p class="hint">No sounds found for this filter.</p>
-  }
+  <div class="empty-state">
+    @if (libraryFilter() === 'disk') {
+      <p class="hint">Nothing on disk yet. Download a sound first.</p>
+    } @else if (libraryFilter() === 'applied') {
+      <p class="hint">No sounds in the current loadout.</p>
+    } @else {
+      <p class="hint">No sounds found for this filter.</p>
+    }
+  </div>
 }
 
 <div class="catalog-panel">
   @if (loading() && shownItems().length > 0) {
     <div class="catalog-loader overlay" role="status">
-      <span class="catalog-loader-spin"></span>
+      <span class="catalog-loader-spin" aria-hidden="true"></span>
       <p>Loading sounds…</p>
     </div>
   }
@@ -176,7 +188,7 @@
       </div>
       <div class="actions">
         @if (!isDownloaded(item.id)) {
-          <button type="button" (click)="download(item)" [disabled]="isBusy()">
+          <button type="button" class="primary" (click)="download(item)" [disabled]="isBusy()">
             {{ downloadingId() === item.id ? downloadLabel(item.id) : 'Download' }}
           </button>
         } @else {
@@ -189,17 +201,21 @@
                   : 'Apply'
             }}
           </button>
-          <button
-            type="button"
-            class="icon-btn danger"
-            [title]="diskSize(item.id) ? 'Delete downloaded files (' + diskSize(item.id) + ')' : 'Delete downloaded files'"
-            (click)="deleteDownload(item.id)"
-            [disabled]="isBusy()"
-          >
-            {{ deletingId() === item.id ? '…' : '🗑' }}
-          </button>
+          <div class="actions-row">
+            <button type="button" (click)="openFolder(item)">Open folder</button>
+            <button
+              type="button"
+              class="icon-btn danger"
+            aria-label="Delete downloaded files"
+              [title]="diskSize(item.id) ? 'Delete downloaded files (' + diskSize(item.id) + ')' : 'Delete downloaded files'"
+              (click)="deleteDownload(item.id)"
+              [disabled]="isBusy()"
+            >
+              {{ deletingId() === item.id ? '…' : '🗑' }}
+            </button>
+          </div>
         }
-        <button type="button" class="icon-btn" title="Info" (click)="openInfo(item)">
+        <button type="button" class="icon-btn" title="Info" [attr.aria-label]="'Info for ' + item.name" (click)="openInfo(item)">
           ℹ
         </button>
       </div>
@@ -209,7 +225,7 @@
 </div>
 
 @if (!isLibrary() && totalPages() > 1) {
-  <nav class="pager">
+  <nav class="pager" aria-label="Sounds catalog pagination">
     <button type="button" (click)="goToPage(page() - 1)" [disabled]="loading() || page() <= 1">
       ‹ Prev
     </button>
@@ -222,8 +238,8 @@
 
 @if (infoItem(); as item) {
   <div class="overlay" (click)="closeInfo()">
-    <div class="sheet" (click)="$event.stopPropagation()">
-      <h2>{{ item.name }}</h2>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sound-info-title" (click)="$event.stopPropagation()">
+      <h2 id="sound-info-title">{{ item.name }}</h2>
       <p class="hint">{{ item.author }} · {{ item.category }}</p>
       <p class="hint">Sounds on this tab come from GameBanana. Apply only replaces matching .mp3 names.</p>
       <div class="sheet-actions">

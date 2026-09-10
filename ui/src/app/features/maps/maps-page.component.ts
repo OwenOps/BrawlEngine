@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  HostListener,
   OnDestroy,
   computed,
   inject,
@@ -18,7 +19,7 @@ import {
   CatalogPage,
   CatalogSort,
 } from '../../core/ipc/contracts/catalog.contracts';
-import { LocalDownloadList } from '../../core/ipc/contracts/download.contracts';
+import { LocalDownloadList, MapNamesResult } from '../../core/ipc/contracts/download.contracts';
 import { IPC_MESSAGE } from '../../core/ipc/ipc.constants';
 import { IpcService } from '../../core/ipc/ipc.service';
 import { LoadoutService } from '../../core/loadout/loadout.service';
@@ -56,7 +57,10 @@ export class MapsPageComponent implements OnDestroy {
   readonly deletingId = signal<number | null>(null);
   readonly cardNote = signal<Record<number, string>>({});
   readonly infoItem = signal<CatalogItem | null>(null);
+  readonly infoMapNames = signal<string[] | null>(null);
+  readonly infoMapNamesLoading = signal(false);
   private readonly downloadedIds = signal<ReadonlySet<number>>(new Set());
+  private readonly folders = signal<Record<number, string>>({});
   private readonly mapCounts = signal<Record<number, number | null>>({});
   private readonly sizeBytes = signal<Record<number, number>>({});
   readonly isBusy = computed(
@@ -177,16 +181,62 @@ export class MapsPageComponent implements OnDestroy {
     scrollMainToTop();
   }
 
+  retry(): void {
+    if (this.isLibrary()) {
+      this.loadLibrary();
+      return;
+    }
+    this.load(this.page());
+  }
+
   openInfo(mod: CatalogItem): void {
     this.infoItem.set(mod);
+    this.infoMapNames.set(null);
+    const count = this.mapCounts()[mod.id];
+    if (count === null || count === undefined || count <= 1) {
+      return;
+    }
+    this.infoMapNamesLoading.set(true);
+    this.ipc
+      .request(IPC_MESSAGE.MOD_MAP_NAMES, { id: mod.id })
+      .then((reply) => {
+        if (!reply.ok || this.infoItem()?.id !== mod.id) {
+          return;
+        }
+        const result = reply.payload as MapNamesResult | undefined;
+        this.infoMapNames.set(result?.names ?? []);
+      })
+      .finally(() => {
+        this.infoMapNamesLoading.set(false);
+      });
   }
 
   closeInfo(): void {
     this.infoItem.set(null);
+    this.infoMapNames.set(null);
+  }
+
+  @HostListener('document:keydown.escape')
+  closeInfoOnEscape(): void {
+    if (this.infoItem()) {
+      this.closeInfo();
+    }
   }
 
   openProfile(url: string): void {
     this.browser.open(url);
+  }
+
+  openDownloadsFolder(): void {
+    this.browser.openDownloads('maps');
+  }
+
+  openFolder(mod: CatalogItem): void {
+    const path = this.folders()[mod.id];
+    if (!path) {
+      return;
+    }
+    this.browser.openFolder(path);
   }
 
   download(mod: CatalogItem): void {
@@ -300,6 +350,10 @@ export class MapsPageComponent implements OnDestroy {
           next.delete(mod.id);
           return next;
         });
+        this.folders.update((map) => {
+          const { [mod.id]: _folder, ...rest } = map;
+          return rest;
+        });
         this.mapCounts.update((counts) => {
           const { [mod.id]: _removed, ...rest } = counts;
           return rest;
@@ -335,12 +389,15 @@ export class MapsPageComponent implements OnDestroy {
       this.downloadedIds.set(new Set(items.map((item) => item.id)));
       const counts: Record<number, number | null> = {};
       const sizes: Record<number, number> = {};
+      const folders: Record<number, string> = {};
       for (const item of items) {
+        folders[item.id] = item.folder;
         counts[item.id] = item.mapCount ?? null;
         if (item.sizeBytes !== undefined) {
           sizes[item.id] = item.sizeBytes;
         }
       }
+      this.folders.set(folders);
       this.mapCounts.set(counts);
       this.sizeBytes.set(sizes);
     });

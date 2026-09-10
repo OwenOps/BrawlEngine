@@ -9,6 +9,26 @@ export interface IpcEnvelope {
   payload?: unknown;
 }
 
+/** Folder pickers and downloads can wait a long time; catalogs must not spin forever. */
+const NO_TIMEOUT = new Set<string>([
+  'game.pick',
+  'music.pick',
+  'folder.open',
+  'downloads.open',
+  'browser.open',
+  'mod.download',
+  'sound.download',
+  'skin.download',
+  'mod.apply',
+  'mod.reset',
+  'music.apply',
+  'music.replace',
+  'mods.resetAll',
+  'mods.reapply',
+  'mods.rankedSafe',
+  'configs.load',
+]);
+
 @Injectable({ providedIn: 'root' })
 export class IpcService {
   private readonly zone = inject(NgZone);
@@ -45,11 +65,46 @@ export class IpcService {
     this.ensureListener();
     const id = crypto.randomUUID();
     const envelope: IpcEnvelope = { id, type, payload };
+    const timeoutMs = this.timeoutMsFor(type);
 
     return new Promise((resolve) => {
-      this.pending.set(id, resolve);
+      let settled = false;
+      const finish = (msg: IpcEnvelope): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        this.pending.delete(id);
+        resolve(msg);
+      };
+
+      this.pending.set(id, finish);
       photinoExternal()!.sendMessage(JSON.stringify(envelope));
+
+      if (timeoutMs > 0) {
+        window.setTimeout(() => {
+          finish({
+            id,
+            type,
+            ok: false,
+            error: 'Timed out waiting for the host. Check your connection and Retry.',
+          });
+        }, timeoutMs);
+      }
     });
+  }
+
+  private timeoutMsFor(type: string): number {
+    if (NO_TIMEOUT.has(type)) {
+      return 0;
+    }
+    if (type === 'catalog.byIds') {
+      return 45000;
+    }
+    if (type.startsWith('catalog.')) {
+      return 35000;
+    }
+    return 25000;
   }
 
   private hasHost(): boolean {
@@ -72,7 +127,6 @@ export class IpcService {
         }
         const resolve = this.pending.get(msg.id);
         if (resolve) {
-          this.pending.delete(msg.id);
           resolve(msg);
           return;
         }

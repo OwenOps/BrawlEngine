@@ -82,6 +82,11 @@ export class AppComponent implements OnDestroy {
     this.theme.setTheme(name);
   }
 
+  tabAccentVar(id: AppTabId): string {
+    const varName = id === 'musics' ? 'accent-music' : `accent-${id}`;
+    return `var(--${varName})`;
+  }
+
   selectTab(id: AppTabId): void {
     this.activeTabId.set(id);
     if (!this.visitedTabIds().has(id)) {

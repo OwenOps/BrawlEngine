@@ -108,7 +108,24 @@ public static class MapArtZipApplier
     /// single-map mod from a pack. Heuristic: mapArt files sharing a base name (across Backgrounds /
     /// Foregrounds / Thumbnails / BoneStructure) belong to the same map. Returns null if unknown.
     /// </summary>
-    public static int? CountMaps(string downloadFolder)
+    public static int? CountMaps(string downloadFolder) => CollectBaseNames(downloadFolder)?.Count;
+
+    /// <summary>Same heuristic as <see cref="CountMaps"/>, but returns the names themselves (sorted) so
+    /// the UI can list which maps a pack contains. Names are raw mapArt file names, not display titles.</summary>
+    public static IReadOnlyList<string>? ListMapNames(string downloadFolder)
+    {
+        var baseNames = CollectBaseNames(downloadFolder);
+        if (baseNames is null)
+        {
+            return null;
+        }
+
+        var names = baseNames.ToList();
+        names.Sort(StringComparer.OrdinalIgnoreCase);
+        return names;
+    }
+
+    private static HashSet<string>? CollectBaseNames(string downloadFolder)
     {
         if (!Directory.Exists(downloadFolder))
         {
@@ -148,7 +165,7 @@ public static class MapArtZipApplier
             return null;
         }
 
-        return baseNames.Count == 0 ? null : baseNames.Count;
+        return baseNames.Count == 0 ? null : baseNames;
     }
 
     /// <summary>Shared by <see cref="Mp3Applier"/> too — any GameBanana archive format, not just zip.</summary>

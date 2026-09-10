@@ -2,6 +2,9 @@
   <div>
     <h1>Maps</h1>
     <p class="hint">Brawlhalla Realms from GameBanana. Download, then Apply.</p>
+    <button type="button" class="link" (click)="openDownloadsFolder()">
+      Open downloads folder
+    </button>
   </div>
   @if (isLibrary()) {
     <p class="count">{{ shownItems().length }} {{ libraryFilter() === 'disk' ? 'on disk' : 'applied' }}</p>
@@ -13,6 +16,7 @@
 <div class="catalog-tools">
   <input
     type="search"
+    aria-label="Search maps"
     placeholder="Search maps (e.g. Brawlhaven)"
     [value]="queryInput()"
     (input)="onQueryInput($event)"
@@ -35,6 +39,7 @@
         type="button"
         class="chip"
         [class.active]="libraryFilter() === option.id"
+        [attr.aria-pressed]="libraryFilter() === option.id"
         (click)="setLibraryFilter(option.id)"
       >
         {{ option.label }}
@@ -44,27 +49,32 @@
 </div>
 
 @if (error(); as errorMessage) {
-  <p class="error">{{ errorMessage }}</p>
+  <div class="error-block" role="alert">
+    <p class="error">{{ errorMessage }}</p>
+    <button type="button" (click)="retry()" [disabled]="loading()">Retry</button>
+  </div>
 }
 @if (loading() && shownItems().length === 0) {
-  <div class="catalog-loader" role="status">
-    <span class="catalog-loader-spin"></span>
+  <div class="catalog-loader" role="status" aria-live="polite">
+    <span class="catalog-loader-spin" aria-hidden="true"></span>
     <p>Loading maps…</p>
   </div>
 } @else if (!loading() && shownItems().length === 0 && !error()) {
-  @if (libraryFilter() === 'disk') {
-    <p class="hint">Nothing on disk yet. Download a map first.</p>
-  } @else if (libraryFilter() === 'applied') {
-    <p class="hint">No maps in the current loadout.</p>
-  } @else {
-    <p class="hint">No realms found.</p>
-  }
+  <div class="empty-state">
+    @if (libraryFilter() === 'disk') {
+      <p class="hint">Nothing on disk yet. Download a map first.</p>
+    } @else if (libraryFilter() === 'applied') {
+      <p class="hint">No maps in the current loadout.</p>
+    } @else {
+      <p class="hint">No realms found.</p>
+    }
+  </div>
 }
 
 <div class="catalog-panel">
   @if (loading() && shownItems().length > 0) {
     <div class="catalog-loader overlay" role="status">
-      <span class="catalog-loader-spin"></span>
+      <span class="catalog-loader-spin" aria-hidden="true"></span>
       <p>Loading maps…</p>
     </div>
   }
@@ -87,6 +97,9 @@
             <span class="badge pack">{{ pack }}</span>
           }
         </div>
+        <button type="button" class="thumb-info" title="Info" [attr.aria-label]="'Info for ' + mod.name" (click)="openInfo(mod)">
+          ℹ
+        </button>
       </div>
       <div class="card-body">
         <h3 [title]="mod.name">{{ mod.name }}</h3>
@@ -98,11 +111,11 @@
         }
         <div class="actions">
           @if (!isDownloaded(mod.id)) {
-            <button type="button" (click)="download(mod)" [disabled]="isBusy()">
+            <button type="button" class="primary wide" (click)="download(mod)" [disabled]="isBusy()">
               {{ downloadingId() === mod.id ? downloadLabel(mod.id) : '⬇ Download' }}
             </button>
           } @else {
-            <button type="button" class="primary" (click)="apply(mod)" [disabled]="isBusy()">
+            <button type="button" class="primary wide" (click)="apply(mod)" [disabled]="isBusy()">
               {{
                 applyingId() === mod.id
                   ? 'Applying…'
@@ -111,29 +124,30 @@
                     : '✓ Apply'
               }}
             </button>
-            @if (isActive(mod.id)) {
+            <div class="actions-row">
+              @if (isActive(mod.id)) {
+                <button
+                  type="button"
+                  class="danger"
+                  (click)="reset(mod)"
+                  [disabled]="isBusy()"
+                >
+                  {{ resettingId() === mod.id ? 'Resetting…' : 'Reset' }}
+                </button>
+              }
+              <button type="button" (click)="openFolder(mod)">Open folder</button>
               <button
                 type="button"
-                class="danger"
-                (click)="reset(mod)"
+                class="icon-btn danger"
+              aria-label="Delete downloaded files"
+                [title]="diskSize(mod.id) ? 'Delete downloaded files (' + diskSize(mod.id) + ')' : 'Delete downloaded files (keeps it applied in-game)'"
+                (click)="deleteDownload(mod)"
                 [disabled]="isBusy()"
               >
-                {{ resettingId() === mod.id ? 'Resetting…' : 'Reset' }}
+                {{ deletingId() === mod.id ? '…' : '🗑' }}
               </button>
-            }
-            <button
-              type="button"
-              class="icon-btn danger"
-              [title]="diskSize(mod.id) ? 'Delete downloaded files (' + diskSize(mod.id) + ')' : 'Delete downloaded files (keeps it applied in-game)'"
-              (click)="deleteDownload(mod)"
-              [disabled]="isBusy()"
-            >
-              {{ deletingId() === mod.id ? '…' : '🗑' }}
-            </button>
+            </div>
           }
-          <button type="button" class="icon-btn" title="Info" (click)="openInfo(mod)">
-            ℹ
-          </button>
         </div>
         @if (diskSize(mod.id); as size) {
           <p class="note">On disk · {{ size }}</p>
@@ -148,7 +162,7 @@
 </div>
 
 @if (!isLibrary() && totalPages() > 1) {
-  <nav class="pager">
+  <nav class="pager" aria-label="Maps catalog pagination">
     <button type="button" (click)="goToPage(page() - 1)" [disabled]="loading() || page() <= 1">
       ‹ Prev
     </button>
@@ -161,10 +175,28 @@
 
 @if (infoItem(); as item) {
   <div class="overlay" (click)="closeInfo()">
-    <div class="sheet" (click)="$event.stopPropagation()">
-      <h2>{{ item.name }}</h2>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="map-info-title" (click)="$event.stopPropagation()">
+      <h2 id="map-info-title">{{ item.name }}</h2>
       <p class="hint">{{ item.author }} · {{ item.category }}</p>
       <p class="hint">Maps on this tab come from GameBanana Realms.</p>
+      @if (packLabel(item.id); as pack) {
+        <p class="hint pack-hint">{{ pack }}</p>
+        @if (infoMapNamesLoading()) {
+          <p class="hint">Reading the archive…</p>
+        } @else {
+          @if (infoMapNames(); as names) {
+            @if (names.length > 0) {
+              <ul class="map-name-list">
+                @for (name of names; track name) {
+                  <li>{{ name }}</li>
+                }
+              </ul>
+            } @else {
+              <p class="hint">Could not read map names from this archive.</p>
+            }
+          }
+        }
+      }
       <div class="sheet-actions">
         <button type="button" class="primary" (click)="openProfile(item.profileUrl)">
           View on GameBanana

@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  HostListener,
   OnDestroy,
   computed,
   effect,
@@ -75,6 +76,7 @@ export class MusicsPageComponent implements OnDestroy {
   readonly replacing = signal(false);
   readonly infoItem = signal<CatalogItem | null>(null);
   private readonly downloadedIds = signal<ReadonlySet<number>>(new Set());
+  private readonly folders = signal<Record<number, string>>({});
   private readonly sizeBytes = signal<Record<number, number>>({});
   readonly isBusy = computed(
     () =>
@@ -193,6 +195,14 @@ export class MusicsPageComponent implements OnDestroy {
     scrollMainToTop();
   }
 
+  retry(): void {
+    if (this.isLibrary()) {
+      this.loadLibrary();
+      return;
+    }
+    this.load(this.page());
+  }
+
   openInfo(item: CatalogItem): void {
     this.infoItem.set(item);
   }
@@ -201,8 +211,27 @@ export class MusicsPageComponent implements OnDestroy {
     this.infoItem.set(null);
   }
 
+  @HostListener('document:keydown.escape')
+  closeInfoOnEscape(): void {
+    if (this.infoItem()) {
+      this.closeInfo();
+    }
+  }
+
   openProfile(url: string): void {
     this.browser.open(url);
+  }
+
+  openDownloadsFolder(): void {
+    this.browser.openDownloads('sounds');
+  }
+
+  openFolder(item: CatalogItem): void {
+    const path = this.folders()[item.id];
+    if (!path) {
+      return;
+    }
+    this.browser.openFolder(path);
   }
 
   selectTrack(event: Event): void {
@@ -360,6 +389,10 @@ export class MusicsPageComponent implements OnDestroy {
           next.delete(id);
           return next;
         });
+        this.folders.update((map) => {
+          const { [id]: _folder, ...rest } = map;
+          return rest;
+        });
         this.sizeBytes.update((sizes) => {
           const { [id]: _size, ...rest } = sizes;
           return rest;
@@ -387,14 +420,17 @@ export class MusicsPageComponent implements OnDestroy {
         return;
       }
       const data = reply.payload as LocalDownloadList | undefined;
-      const ids = new Set((data?.items ?? []).map((item) => item.id));
-      this.downloadedIds.set(ids);
+      const items = data?.items ?? [];
+      this.downloadedIds.set(new Set(items.map((item) => item.id)));
       const sizes: Record<number, number> = {};
-      for (const item of data?.items ?? []) {
+      const folders: Record<number, string> = {};
+      for (const item of items) {
+        folders[item.id] = item.folder;
         if (item.sizeBytes !== undefined) {
           sizes[item.id] = item.sizeBytes;
         }
       }
+      this.folders.set(folders);
       this.sizeBytes.set(sizes);
     });
   }

@@ -12,14 +12,20 @@ public static class AppPaths
 
     public static string NamedConfigsFile => Path.Combine(Root, "configs.json");
 
+    public static string DownloadsRoot => Path.Combine(Root, "downloads");
+
+    public static string SoundDownloadsRoot => Path.Combine(DownloadsRoot, "sounds");
+
+    public static string SkinDownloadsRoot => Path.Combine(DownloadsRoot, "skins");
+
     public static string DownloadsFolder(int modId) =>
-        Path.Combine(Root, "downloads", modId.ToString());
+        Path.Combine(DownloadsRoot, modId.ToString());
 
     public static string SoundDownloadsFolder(int soundId) =>
-        Path.Combine(Root, "downloads", "sounds", soundId.ToString());
+        Path.Combine(SoundDownloadsRoot, soundId.ToString());
 
     public static string SkinDownloadsFolder(int skinId) =>
-        Path.Combine(Root, "downloads", "skins", skinId.ToString());
+        Path.Combine(SkinDownloadsRoot, skinId.ToString());
 
     public static string BackupsRoot => Path.Combine(Root, "backups");
 }
