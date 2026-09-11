@@ -55,6 +55,7 @@ public static class IpcRouter
             "mod.download" => DownloadMod(window, request),
             "sound.download" => DownloadSound(window, request),
             "skin.download" => DownloadSkin(window, request),
+            "downloads.cancel" => CancelDownload(request),
             "downloads.list" => ListDownloads(request),
             "downloads.delete" => DeleteDownload(request),
             "downloads.open" => OpenDownloads(request),
@@ -62,6 +63,7 @@ public static class IpcRouter
             "mod.apply" => ApplyMod(request),
             "mod.reset" => ResetMap(request),
             "music.apply" => ApplySound(request),
+            "music.reset" => ResetSound(request),
             "music.tracks" => MusicTracks(request),
             "music.replace" => ReplaceTrack(request),
             "loadout.get" => Loadout(request),
@@ -113,6 +115,18 @@ public static class IpcRouter
             Ok = false,
             Error = error,
         }, JsonOptions));
+    }
+
+    private static IpcEnvelope CatalogLoadFailed(IpcEnvelope request, Exception ex)
+    {
+        Debug.WriteLine(request.Type + ": " + ex);
+        return new IpcEnvelope
+        {
+            Id = request.Id,
+            Type = request.Type,
+            Ok = false,
+            Error = GameBananaJson.CatalogLoadError,
+        };
     }
 
     private static IpcEnvelope Pong(IpcEnvelope request)
@@ -191,13 +205,7 @@ public static class IpcRouter
         }
         catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
         {
-            return new IpcEnvelope
-            {
-                Id = request.Id,
-                Type = request.Type,
-                Ok = false,
-                Error = "Could not load GameBanana: " + ex.Message,
-            };
+            return CatalogLoadFailed(request, ex);
         }
     }
 
@@ -217,13 +225,7 @@ public static class IpcRouter
         }
         catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
         {
-            return new IpcEnvelope
-            {
-                Id = request.Id,
-                Type = request.Type,
-                Ok = false,
-                Error = "Could not load GameBanana: " + ex.Message,
-            };
+            return CatalogLoadFailed(request, ex);
         }
     }
 
@@ -252,13 +254,7 @@ public static class IpcRouter
         }
         catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
         {
-            return new IpcEnvelope
-            {
-                Id = request.Id,
-                Type = request.Type,
-                Ok = false,
-                Error = "Could not load GameBanana: " + ex.Message,
-            };
+            return CatalogLoadFailed(request, ex);
         }
     }
 
@@ -270,30 +266,16 @@ public static class IpcRouter
             return MissingId(request);
         }
 
-        try
-        {
-            var result = ModDownloadClient
-                .DownloadAsync(id, GameBananaIds.SoundItemType, progressKind: "sounds", onProgress: progress => PushProgress(window, progress))
-                .GetAwaiter()
-                .GetResult();
-            return new IpcEnvelope
-            {
-                Id = request.Id,
-                Type = request.Type,
-                Ok = true,
-                Payload = JsonSerializer.SerializeToElement(result, JsonOptions),
-            };
-        }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException or InvalidOperationException or IOException)
-        {
-            return new IpcEnvelope
-            {
-                Id = request.Id,
-                Type = request.Type,
-                Ok = false,
-                Error = "Download failed: " + ex.Message,
-            };
-        }
+        return RunDownload(
+            request,
+            "sounds",
+            id,
+            token => ModDownloadClient.DownloadAsync(
+                id,
+                GameBananaIds.SoundItemType,
+                progressKind: "sounds",
+                onProgress: progress => PushProgress(window, progress),
+                cancellationToken: token));
     }
 
     private static IpcEnvelope DownloadSkin(PhotinoWindow window, IpcEnvelope request)
@@ -304,17 +286,46 @@ public static class IpcRouter
             return MissingId(request);
         }
 
+        return RunDownload(
+            request,
+            "skins",
+            id,
+            token => ModDownloadClient.DownloadAsync(
+                id,
+                "Mod",
+                AppPaths.SkinDownloadsFolder(id),
+                progressKind: "skins",
+                onProgress: progress => PushProgress(window, progress),
+                cancellationToken: token));
+    }
+
+    private static IpcEnvelope CancelDownload(IpcEnvelope request)
+    {
+        var id = ReadId(request);
+        var kind = ReadString(request, "kind");
+        if (id <= 0)
+        {
+            return MissingId(request);
+        }
+
+        DownloadGate.TryCancel(kind, id);
+        return new IpcEnvelope
+        {
+            Id = request.Id,
+            Type = request.Type,
+            Ok = true,
+        };
+    }
+
+    private static IpcEnvelope RunDownload(
+        IpcEnvelope request,
+        string kind,
+        int id,
+        Func<CancellationToken, Task<DownloadResultDto>> start)
+    {
         try
         {
-            var result = ModDownloadClient
-                .DownloadAsync(
-                    id,
-                    "Mod",
-                    AppPaths.SkinDownloadsFolder(id),
-                    progressKind: "skins",
-                    onProgress: progress => PushProgress(window, progress))
-                .GetAwaiter()
-                .GetResult();
+            var result = DownloadGate.RunAsync(kind, id, start).GetAwaiter().GetResult();
             return new IpcEnvelope
             {
                 Id = request.Id,
@@ -323,7 +334,17 @@ public static class IpcRouter
                 Payload = JsonSerializer.SerializeToElement(result, JsonOptions),
             };
         }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException or InvalidOperationException or IOException)
+        catch (OperationCanceledException)
+        {
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = false,
+                Error = "Download cancelled.",
+            };
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException or IOException)
         {
             return new IpcEnvelope
             {
@@ -425,7 +446,19 @@ public static class IpcRouter
             return MissingId(request);
         }
 
-        var (ok, error, result) = ModApplyService.TryApplySound(id);
+        var (ok, error, result) = ModApplyService.TryApplySound(id, category: ReadString(request, "category"));
+        return Attempt(request, ok, error, result);
+    }
+
+    private static IpcEnvelope ResetSound(IpcEnvelope request)
+    {
+        var id = ReadId(request);
+        if (id <= 0)
+        {
+            return MissingId(request);
+        }
+
+        var (ok, error, result) = ModApplyService.TryResetSound(id);
         return Attempt(request, ok, error, result);
     }
 
@@ -439,7 +472,7 @@ public static class IpcRouter
                 Id = request.Id,
                 Type = request.Type,
                 Ok = false,
-                Error = "Game audio folder not found. Use Set music folder (audio\\pc, or the Brawlhalla folder).",
+                Error = "Game audio folder not found. Use Set audio folder (audio\\pc, or the Brawlhalla folder).",
             };
         }
 
@@ -733,13 +766,7 @@ public static class IpcRouter
         }
         catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
         {
-            return new IpcEnvelope
-            {
-                Id = request.Id,
-                Type = request.Type,
-                Ok = false,
-                Error = "Could not load GameBanana: " + ex.Message,
-            };
+            return CatalogLoadFailed(request, ex);
         }
     }
 
@@ -765,30 +792,15 @@ public static class IpcRouter
             };
         }
 
-        try
-        {
-            var result = ModDownloadClient
-                .DownloadAsync(modId, progressKind: "maps", onProgress: progress => PushProgress(window, progress))
-                .GetAwaiter()
-                .GetResult();
-            return new IpcEnvelope
-            {
-                Id = request.Id,
-                Type = request.Type,
-                Ok = true,
-                Payload = JsonSerializer.SerializeToElement(result, JsonOptions),
-            };
-        }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException or InvalidOperationException or IOException)
-        {
-            return new IpcEnvelope
-            {
-                Id = request.Id,
-                Type = request.Type,
-                Ok = false,
-                Error = "Download failed: " + ex.Message,
-            };
-        }
+        return RunDownload(
+            request,
+            "maps",
+            modId,
+            token => ModDownloadClient.DownloadAsync(
+                modId,
+                progressKind: "maps",
+                onProgress: progress => PushProgress(window, progress),
+                cancellationToken: token));
     }
 
     private static IpcEnvelope Loadout(IpcEnvelope request)
@@ -804,7 +816,7 @@ public static class IpcRouter
 
     private static IpcEnvelope ResetAll(IpcEnvelope request)
     {
-        var (ok, error, result) = ModApplyService.TryResetAll();
+        var (ok, error, result) = ModApplyService.TryResetAll(ReadBool(request, "deleteDownloads"));
         return Attempt(request, ok, error, result);
     }
 
@@ -930,6 +942,19 @@ public static class IpcRouter
                 Error = ex.Message,
             };
         }
+    }
+
+    private static bool ReadBool(IpcEnvelope request, string property)
+    {
+        if (request.Payload is { } payload
+            && payload.ValueKind == JsonValueKind.Object
+            && payload.TryGetProperty(property, out var value)
+            && (value.ValueKind == JsonValueKind.True || value.ValueKind == JsonValueKind.False))
+        {
+            return value.GetBoolean();
+        }
+
+        return false;
     }
 
     private static string ReadString(IpcEnvelope request, string property)

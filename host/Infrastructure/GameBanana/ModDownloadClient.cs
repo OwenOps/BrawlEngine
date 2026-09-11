@@ -26,9 +26,7 @@ public static class ModDownloadClient
 
         var profileUrl = $"https://gamebanana.com/apiv11/{itemType}/{id}/ProfilePage";
         using var profileResponse = await AppHttp.Shared.GetAsync(profileUrl, cancellationToken).ConfigureAwait(false);
-        profileResponse.EnsureSuccessStatusCode();
-        await using var profileStream = await profileResponse.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        using var doc = await JsonDocument.ParseAsync(profileStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+        using var doc = await GameBananaJson.ReadDocumentAsync(profileResponse, cancellationToken).ConfigureAwait(false);
 
         var files = ListDownloadableFiles(doc.RootElement);
         if (files.Count == 0)
@@ -42,15 +40,15 @@ public static class ModDownloadClient
                 : AppPaths.DownloadsFolder(id));
         Directory.CreateDirectory(folder);
 
-        var totalBytes = files.Sum(file => file.Size);
-        var bytesBeforeCurrentFile = 0L;
-        var saved = new List<DownloadedFileDto>();
-        for (var fileIndex = 0; fileIndex < files.Count; fileIndex++)
+        try
         {
-            var file = files[fileIndex];
-            var dest = Path.Combine(folder, SafeFileName(file.Name));
-            try
+            var totalBytes = files.Sum(file => file.Size);
+            var bytesBeforeCurrentFile = 0L;
+            var saved = new List<DownloadedFileDto>();
+            for (var fileIndex = 0; fileIndex < files.Count; fileIndex++)
             {
+                var file = files[fileIndex];
+                var dest = Path.Combine(folder, SafeFileName(file.Name));
                 if (File.Exists(dest) && new FileInfo(dest).Length == file.Size && file.Size > 0)
                 {
                     saved.Add(new DownloadedFileDto(file.Name, dest, file.Size));
@@ -82,18 +80,14 @@ public static class ModDownloadClient
                 saved.Add(new DownloadedFileDto(file.Name, dest, savedBytes));
                 bytesBeforeCurrentFile += savedBytes;
             }
-            catch
-            {
-                if (File.Exists(dest))
-                {
-                    File.Delete(dest);
-                }
 
-                throw;
-            }
+            return new DownloadResultDto(id, folder, saved);
         }
-
-        return new DownloadResultDto(id, folder, saved);
+        catch
+        {
+            TryDeleteFolder(folder);
+            throw;
+        }
     }
 
     private static async Task CopyWithProgressAsync(
@@ -149,6 +143,20 @@ public static class ModDownloadClient
         }
 
         return list;
+    }
+
+    private static void TryDeleteFolder(string folder)
+    {
+        try
+        {
+            if (Directory.Exists(folder))
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     private static string SafeFileName(string name)

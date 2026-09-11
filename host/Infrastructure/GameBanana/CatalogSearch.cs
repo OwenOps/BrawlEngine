@@ -39,45 +39,50 @@ public static class CatalogSearch
         var ranked = new List<RankedItem>();
         for (var apiPage = 1; apiPage <= MaxSearchPages; apiPage++)
         {
-            var url =
-                "https://gamebanana.com/apiv11/Util/Search/Results?_sSearchString="
-                + Uri.EscapeDataString(query)
-                + "&_nPage="
-                + apiPage
-                + "&_nPerpage=15&_idGameRow="
-                + GameBananaIds.BrawlhallaGameId;
-
-            using var response = await AppHttp.Shared.GetAsync(url, cancellationToken).ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
-            var root = doc.RootElement;
-
-            var complete = true;
-            if (root.TryGetProperty("_aMetadata", out var meta)
-                && meta.TryGetProperty("_bIsComplete", out var done))
+            try
             {
-                complete = done.GetBoolean();
-            }
+                var url =
+                    "https://gamebanana.com/apiv11/Util/Search/Results?_sSearchString="
+                    + Uri.EscapeDataString(query)
+                    + "&_nPage="
+                    + apiPage
+                    + "&_nPerpage=15&_idGameRow="
+                    + GameBananaIds.BrawlhallaGameId;
 
-            if (root.TryGetProperty("_aRecords", out var records) && records.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var record in records.EnumerateArray())
+                using var response = await AppHttp.Shared.GetAsync(url, cancellationToken).ConfigureAwait(false);
+                using var doc = await GameBananaJson.ReadDocumentAsync(response, cancellationToken).ConfigureAwait(false);
+                var root = doc.RootElement;
+
+                var complete = true;
+                if (root.TryGetProperty("_aMetadata", out var meta)
+                    && meta.TryGetProperty("_bIsComplete", out var done))
                 {
-                    if (!keep(record))
-                    {
-                        continue;
-                    }
+                    complete = done.GetBoolean();
+                }
 
-                    ranked.Add(new RankedItem(
-                        toItem(record),
-                        ReadInt64(record, "_tsDateAdded"),
-                        ReadInt(record, "_nLikeCount"),
-                        ReadInt(record, "_nDownloadCount")));
+                if (root.TryGetProperty("_aRecords", out var records) && records.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var record in records.EnumerateArray())
+                    {
+                        if (!keep(record))
+                        {
+                            continue;
+                        }
+
+                        ranked.Add(new RankedItem(
+                            toItem(record),
+                            ReadInt64(record, "_tsDateAdded"),
+                            ReadInt(record, "_nLikeCount"),
+                            ReadInt(record, "_nDownloadCount")));
+                    }
+                }
+
+                if (complete)
+                {
+                    break;
                 }
             }
-
-            if (complete)
+            catch (OperationCanceledException) when (ranked.Count > 0)
             {
                 break;
             }
@@ -236,15 +241,39 @@ public static class CatalogSearch
             author = authorEl.GetString() ?? "";
         }
 
-        var category = defaultCategory;
-        if (record.TryGetProperty("_aRootCategory", out var cat)
-            && cat.TryGetProperty("_sName", out var catName)
-            && catName.GetString() is { Length: > 0 } n)
-        {
-            category = n;
-        }
+        var category = ReadCategoryName(record) ?? defaultCategory;
 
         return new CatalogItemDto(id, name, author, ThumbnailUrl(record), category, profile);
+    }
+
+    /// <summary>Index uses _aRootCategory; ProfilePage uses _aCategory.</summary>
+    public static string? ReadCategoryName(JsonElement record)
+    {
+        if (TryName(record, "_aRootCategory", out var root))
+        {
+            return root;
+        }
+
+        if (TryName(record, "_aCategory", out var category))
+        {
+            return category;
+        }
+
+        return null;
+    }
+
+    private static bool TryName(JsonElement record, string property, out string name)
+    {
+        name = "";
+        if (!record.TryGetProperty(property, out var cat)
+            || !cat.TryGetProperty("_sName", out var catName)
+            || catName.GetString() is not { Length: > 0 } n)
+        {
+            return false;
+        }
+
+        name = n;
+        return true;
     }
 
     public static CatalogItemDto Stub(int id, string itemType, string defaultCategory)

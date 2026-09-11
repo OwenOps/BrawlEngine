@@ -20,6 +20,18 @@ public static class RealmCatalogClient
         }
 
         query = query?.Trim() ?? "";
+        var cacheKey = "maps|" + page + "|" + query + "|" + CatalogSearch.SortAlias(sort);
+        return await CatalogCache
+            .GetOrFetchAsync(cacheKey, ct => FetchAsync(page, query, sort, ct), cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task<CatalogPageDto> FetchAsync(
+        int page,
+        string query,
+        string? sort,
+        CancellationToken cancellationToken)
+    {
         if (query.Length >= 2)
         {
             return await CatalogSearch.SearchAsync(
@@ -43,9 +55,7 @@ public static class RealmCatalogClient
             + CatalogSearch.SortAlias(sort);
 
         using var response = await AppHttp.Shared.GetAsync(url, cancellationToken).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+        using var doc = await GameBananaJson.ReadDocumentAsync(response, cancellationToken).ConfigureAwait(false);
         return CatalogSearch.ParseIndex(doc.RootElement, page, ToItem);
     }
 

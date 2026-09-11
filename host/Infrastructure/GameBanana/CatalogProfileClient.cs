@@ -56,9 +56,7 @@ public static class CatalogProfileClient
         {
             var url = "https://gamebanana.com/apiv11/" + itemType + "/" + id + "/ProfilePage";
             using var response = await AppHttp.Shared.GetAsync(url, cancellationToken).ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+            using var doc = await GameBananaJson.ReadDocumentAsync(response, cancellationToken).ConfigureAwait(false);
             var item = CatalogSearch.FromRecord(doc.RootElement, defaultCategory);
             return item.Id > 0 ? item : CatalogSearch.Stub(id, itemType, defaultCategory);
         }
