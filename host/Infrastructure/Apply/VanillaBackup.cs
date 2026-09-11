@@ -31,9 +31,9 @@ public static class VanillaBackup
         return BackupIfMissing(gameFile, backupFile);
     }
 
-    public static bool BackupAudioIfMissing(string audioFolder, string fileName)
+    public static bool BackupAudioIfMissing(string audioFolder, string relativeUnderAudio)
     {
-        var (gameFile, backupFile) = AudioPaths(audioFolder, fileName);
+        var (gameFile, backupFile) = AudioPaths(audioFolder, relativeUnderAudio);
         return BackupIfMissing(gameFile, backupFile);
     }
 
@@ -42,21 +42,24 @@ public static class VanillaBackup
         return PathsUnder(gameRoot, BrawlhallaLocator.MapArtFolder, relativeUnderMapArt);
     }
 
-    public static (string GameFile, string BackupFile) AudioPaths(string audioFolder, string fileName)
+    public static (string GameFile, string BackupFile) AudioPaths(string audioFolder, string relativeUnderAudio)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(audioFolder);
-        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativeUnderAudio);
 
-        var name = Path.GetFileName(fileName);
+        var relative = relativeUnderAudio
+            .Replace('/', Path.DirectorySeparatorChar)
+            .TrimStart(Path.DirectorySeparatorChar);
         var folderRoot = Path.GetFullPath(audioFolder);
-        var gameFile = Path.GetFullPath(Path.Combine(folderRoot, name));
+        var gameFile = Path.GetFullPath(Path.Combine(folderRoot, relative));
         EnsureUnder(folderRoot, gameFile);
 
-        var backupSub = Path.GetExtension(name).Equals(".wem", StringComparison.OrdinalIgnoreCase)
-            ? "audio-pc"
-            : BrawlhallaLocator.Mp3Folder;
+        var name = Path.GetFileName(relative);
+        var backupSub = Path.GetExtension(name).Equals(".mp3", StringComparison.OrdinalIgnoreCase)
+            ? BrawlhallaLocator.Mp3Folder
+            : "audio-pc";
         var backupRoot = Path.GetFullPath(Path.Combine(AppPaths.BackupsRoot, backupSub));
-        var backupFile = Path.GetFullPath(Path.Combine(backupRoot, name));
+        var backupFile = Path.GetFullPath(Path.Combine(backupRoot, relative));
         EnsureUnder(backupRoot, backupFile);
 
         return (gameFile, backupFile);

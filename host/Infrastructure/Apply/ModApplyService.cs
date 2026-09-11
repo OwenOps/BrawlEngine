@@ -29,7 +29,8 @@ public static class ModApplyService
 
     public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryApplySound(
         int soundId,
-        bool downloadIfMissing = false)
+        bool downloadIfMissing = false,
+        string? category = null)
     {
         var musicWrite = EnsureCanWriteMusic();
         if (musicWrite.Error is not null)
@@ -37,7 +38,7 @@ public static class ModApplyService
             return (false, musicWrite.Error, null);
         }
 
-        return ApplySound(musicWrite.Mp3Folder!, soundId, downloadIfMissing);
+        return ApplySound(musicWrite.Mp3Folder!, soundId, downloadIfMissing, category);
     }
 
     public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryReplaceTrack(
@@ -98,7 +99,7 @@ public static class ModApplyService
         }
     }
 
-    public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryResetAll()
+    public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryResetAll(bool deleteDownloads = false)
     {
         var blocked = EnsureCanWrite();
         if (blocked.Error is not null)
@@ -115,7 +116,14 @@ public static class ModApplyService
             }
 
             LoadoutStore.Clear();
-            return (true, null, new ApplyAttemptDto(true, "Restored " + restored + " vanilla file(s)."));
+            var reason = "Restored " + restored + " vanilla file(s).";
+            if (deleteDownloads)
+            {
+                DownloadInventory.DeleteAllDownloads();
+                reason += " Deleted downloaded archives. Vanilla backups were kept.";
+            }
+
+            return (true, null, new ApplyAttemptDto(true, reason));
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
         {
@@ -192,6 +200,50 @@ public static class ModApplyService
         }
     }
 
+    public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryResetSound(int soundId)
+    {
+        var musicWrite = EnsureCanWriteMusic();
+        if (musicWrite.Error is not null)
+        {
+            return (false, musicWrite.Error, null);
+        }
+
+        var loadout = LoadoutStore.Load();
+        if (loadout.Music.All(entry => entry.ModId != soundId))
+        {
+            return (false, "This sound is not in the current loadout.", null);
+        }
+
+        try
+        {
+            var restored = VanillaReset.RestoreMp3();
+            if (restored == 0)
+            {
+                return (false, "Nothing to restore in audio. Apply a sound first so vanilla files are backed up.", null);
+            }
+
+            LoadoutStore.RemoveMusic(soundId);
+            var remaining = LoadoutStore.Load().Music;
+            foreach (var entry in remaining)
+            {
+                var result = ApplySound(musicWrite.Mp3Folder!, entry.ModId, downloadIfMissing: true, category: null);
+                if (!result.Ok)
+                {
+                    return (false, result.Error ?? "Could not reapply the other sounds.", null);
+                }
+            }
+
+            var extra = remaining.Count == 0
+                ? " No other sounds left."
+                : " Reapplied " + remaining.Count + " other sound(s).";
+            return (true, null, new ApplyAttemptDto(true, "Removed this sound." + extra));
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            return (false, "Reset failed: " + ex.Message, null);
+        }
+    }
+
     public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryReapply()
     {
         var loadout = LoadoutStore.Load();
@@ -247,7 +299,7 @@ public static class ModApplyService
 
         foreach (var entry in loadout.Music)
         {
-            var result = ApplySound(mp3Folder, entry.ModId, downloadIfMissing: true);
+            var result = ApplySound(mp3Folder, entry.ModId, downloadIfMissing: true, category: null);
             if (!result.Ok)
             {
                 return (false, result.Error ?? "Reapply failed.", null);
@@ -313,7 +365,14 @@ public static class ModApplyService
 
             try
             {
-                ModDownloadClient.DownloadAsync(modId).GetAwaiter().GetResult();
+                DownloadGate
+                    .RunAsync("maps", modId, token => ModDownloadClient.DownloadAsync(modId, cancellationToken: token))
+                    .GetAwaiter()
+                    .GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                return (false, "Download cancelled.", null);
             }
             catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException
                 or InvalidOperationException or IOException)
@@ -357,8 +416,14 @@ public static class ModApplyService
     private static (bool Ok, string? Error, ApplyAttemptDto? Result) ApplySound(
         string mp3Folder,
         int soundId,
-        bool downloadIfMissing)
+        bool downloadIfMissing,
+        string? category)
     {
+        if (SoundApplyKind.BlocksCatalogApply(category))
+        {
+            return (false, SoundApplyKind.CatalogBlockedMessage(), null);
+        }
+
         var folder = AppPaths.SoundDownloadsFolder(soundId);
         if (!Directory.Exists(folder) || !Directory.EnumerateFileSystemEntries(folder).Any())
         {
@@ -369,7 +434,20 @@ public static class ModApplyService
 
             try
             {
-                ModDownloadClient.DownloadAsync(soundId, GameBananaIds.SoundItemType).GetAwaiter().GetResult();
+                DownloadGate
+                    .RunAsync(
+                        "sounds",
+                        soundId,
+                        token => ModDownloadClient.DownloadAsync(
+                            soundId,
+                            GameBananaIds.SoundItemType,
+                            cancellationToken: token))
+                    .GetAwaiter()
+                    .GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                return (false, "Download cancelled.", null);
             }
             catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException
                 or InvalidOperationException or IOException)
@@ -380,10 +458,10 @@ public static class ModApplyService
 
         try
         {
-            var count = Mp3Applier.ApplyDownloadFolder(mp3Folder, AppPaths.SoundDownloadsFolder(soundId));
+            var count = Mp3Applier.ApplyDownloadFolder(mp3Folder, AppPaths.SoundDownloadsFolder(soundId), category);
             if (count == 0)
             {
-                return (false, "This pack has no .wem (or .mp3) whose name matches a file in the game audio folder. Close the game if it is open, then try a Music / Win Theme pack with matching filenames.", null);
+                return (false, "This pack has no .bnk / .wem (or .mp3) whose name matches a vanilla file under audio\\pc. Close the game if it is open. Music / Win / Main Theme cannot Apply this way.", null);
             }
 
             var reason = "Applied " + count + " audio file(s).";

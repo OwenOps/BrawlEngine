@@ -11,3 +11,9 @@ export const SOUND_CATEGORIES: ReadonlyArray<{ id: number; label: string }> = [
   { id: 3689, label: 'Weapon Sounds' },
   { id: 3558, label: 'Win Theme' },
 ];
+
+const APPLY_BLOCKED = new Set(['Music', 'Main Theme', 'Win Theme']);
+
+export function canApplySoundCategory(label: string): boolean {
+  return !APPLY_BLOCKED.has(label);
+}

@@ -9,6 +9,6 @@ export interface AppTabDef {
 /** All three pages stay mounted in app.component.html ([hidden] toggling) so filters survive tab switches. */
 export const APP_TABS: ReadonlyArray<AppTabDef> = [
   { id: 'maps', label: 'Maps', icon: '🗺' },
-  { id: 'musics', label: 'Musics', icon: '🎵' },
+  { id: 'musics', label: 'Audio', icon: '🎵' },
   { id: 'skins', label: 'Skins', icon: '⚔' },
 ];

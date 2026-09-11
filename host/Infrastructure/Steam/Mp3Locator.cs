@@ -113,7 +113,7 @@ public static class Mp3Locator
         {
             return new Mp3LocationDto(dialog.SelectedPath, false, "pick")
             {
-                Error = "No .wem or .mp3 files there. Pick audio\\pc, or the Brawlhalla folder.",
+                Error = "No .wem, .bnk, or .mp3 files there. Pick audio\\pc, or the Brawlhalla folder.",
             };
         }
 
@@ -151,7 +151,8 @@ public static class Mp3Locator
     private static bool HasAudioFiles(string folder)
     {
         return Directory.Exists(folder)
-            && (Directory.EnumerateFiles(folder, "*.wem").Any()
-                || Directory.EnumerateFiles(folder, "*.mp3").Any());
+            && (Directory.EnumerateFiles(folder, "*.wem", SearchOption.AllDirectories).Any()
+                || Directory.EnumerateFiles(folder, "*.bnk", SearchOption.AllDirectories).Any()
+                || Directory.EnumerateFiles(folder, "*.mp3", SearchOption.AllDirectories).Any());
     }
 }

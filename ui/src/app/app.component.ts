@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  HostListener,
   OnDestroy,
   computed,
   inject,
@@ -50,6 +51,8 @@ export class AppComponent implements OnDestroy {
   readonly picking = signal(false);
   readonly actionBusy = signal(false);
   readonly actionMessage = signal<string | null>(null);
+  readonly resetDialogOpen = signal(false);
+  readonly resetDeleteDownloads = signal(false);
   readonly configName = signal('');
   readonly configs = this.loadout.configs;
   readonly shellBusy = computed(
@@ -75,6 +78,13 @@ export class AppComponent implements OnDestroy {
   ngOnDestroy(): void {
     if (this.runningTimer !== undefined) {
       clearInterval(this.runningTimer);
+    }
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    if (this.resetDialogOpen()) {
+      this.closeResetDialog();
     }
   }
 
@@ -111,7 +121,33 @@ export class AppComponent implements OnDestroy {
   }
 
   resetAll(): void {
-    this.runLoadoutAction(() => this.loadout.resetAll());
+    if (this.shellBusy()) {
+      return;
+    }
+    this.resetDeleteDownloads.set(false);
+    this.resetDialogOpen.set(true);
+  }
+
+  closeResetDialog(): void {
+    this.resetDialogOpen.set(false);
+  }
+
+  confirmResetAll(): void {
+    const deleteDownloads = this.resetDeleteDownloads();
+    this.resetDialogOpen.set(false);
+    this.runLoadoutAction(() =>
+      this.loadout.resetAll(deleteDownloads).then((result) => {
+        if (deleteDownloads && result.ok) {
+          this.downloadActivity.notifyInventoryChanged();
+        }
+        return result;
+      }),
+    );
+  }
+
+  setResetDeleteDownloads(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    this.resetDeleteDownloads.set(input.checked);
   }
 
   rankedSafe(): void {
@@ -210,7 +246,7 @@ export class AppComponent implements OnDestroy {
       this.mp3Path.set(
         kind === 'music' && error
           ? error
-          : 'Audio folder not found. Set music folder (audio\\pc).',
+          : 'Audio folder not found. Set audio folder (audio\\pc).',
       );
     }
   }

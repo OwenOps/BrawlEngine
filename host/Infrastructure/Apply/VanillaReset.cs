@@ -20,7 +20,8 @@ public static class VanillaReset
 
         var dest = mp3.Path;
         var restored = 0;
-        if (Directory.EnumerateFiles(dest, "*.wem").Any())
+        if (Directory.EnumerateFiles(dest, "*.wem", SearchOption.AllDirectories).Any()
+            || Directory.EnumerateFiles(dest, "*.bnk", SearchOption.AllDirectories).Any())
         {
             restored += RestoreIntoFolder(dest, "audio-pc");
         }

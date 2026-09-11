@@ -9,6 +9,13 @@ public static class MapArtZipApplier
     private static readonly HashSet<string> SkipExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".txt", ".nfo", ".md", ".url", ".html", ".htm", ".exe", ".dll", ".json",
+        ".mp3", ".wem", ".bnk", ".ogg", ".wav", ".flac",
+    };
+
+    /// <summary>Pack leftovers (ost in mapArt/mp3, etc.). Not vanilla mapArt folders.</summary>
+    private static readonly HashSet<string> SkipFolders = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "mp3", "soundtrack", "ost", "music", "sounds", "audio", "songs",
     };
 
     private static readonly HashSet<string> ArchiveExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -151,7 +158,7 @@ public static class MapArtZipApplier
                         continue;
                     }
 
-                    if (SkipExtensions.Contains(Path.GetExtension(entry.Key)))
+                    if (IsJunkPath(entry.Key) || SkipExtensions.Contains(Path.GetExtension(entry.Key)))
                     {
                         continue;
                     }
@@ -205,7 +212,11 @@ public static class MapArtZipApplier
 
         foreach (var dir in Directory.EnumerateDirectories(mapArt))
         {
-            names.Add(Path.GetFileName(dir)!);
+            var name = Path.GetFileName(dir)!;
+            if (!SkipFolders.Contains(name))
+            {
+                names.Add(name);
+            }
         }
 
         return names;
@@ -287,7 +298,7 @@ public static class MapArtZipApplier
     private static bool IsJunk(string contentRoot, string file)
     {
         var relative = Path.GetRelativePath(contentRoot, file);
-        if (relative.Contains("__MACOSX", StringComparison.OrdinalIgnoreCase))
+        if (IsJunkPath(relative))
         {
             return true;
         }
@@ -301,5 +312,26 @@ public static class MapArtZipApplier
         }
 
         return SkipExtensions.Contains(Path.GetExtension(file));
+    }
+
+    private static bool IsJunkPath(string relative)
+    {
+        if (relative.Contains("__MACOSX", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var parts = relative
+            .Replace('/', Path.DirectorySeparatorChar)
+            .Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var part in parts)
+        {
+            if (SkipFolders.Contains(part))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

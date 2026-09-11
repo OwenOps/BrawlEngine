@@ -32,7 +32,7 @@ import {
   asMusicSlot,
   slotHint,
 } from './music-slot';
-import { SOUND_CATEGORIES } from './sound-categories';
+import { SOUND_CATEGORIES, canApplySoundCategory } from './sound-categories';
 
 @Component({
   selector: 'app-musics-page',
@@ -65,8 +65,9 @@ export class MusicsPageComponent implements OnDestroy {
   readonly page = signal(1);
   readonly totalPages = signal(1);
   readonly totalCount = signal(0);
-  readonly downloadingId = signal<number | null>(null);
+  readonly downloadingIds = signal<ReadonlySet<number>>(new Set());
   readonly applyingId = signal<number | null>(null);
+  readonly resettingId = signal<number | null>(null);
   readonly deletingId = signal<number | null>(null);
   readonly cardNote = signal<Record<number, string>>({});
   readonly tracks = signal<MusicTrack[]>([]);
@@ -78,17 +79,18 @@ export class MusicsPageComponent implements OnDestroy {
   private readonly downloadedIds = signal<ReadonlySet<number>>(new Set());
   private readonly folders = signal<Record<number, string>>({});
   private readonly sizeBytes = signal<Record<number, number>>({});
+  private readonly categoryById = signal<Record<number, string>>({});
   readonly isBusy = computed(
     () =>
-      this.downloadingId() !== null ||
       this.applyingId() !== null ||
+      this.resettingId() !== null ||
       this.deletingId() !== null ||
       this.replacing() ||
       this.loadout.busy(),
   );
   readonly isLibrary = computed(() => this.libraryFilter() !== 'all');
   readonly shownItems = computed(() => {
-    let list = this.items();
+    let list = this.items().map((item) => this.withKnownCategory(item));
     if (this.isLibrary()) {
       const query = this.queryInput().trim().toLowerCase();
       if (query) {
@@ -130,6 +132,10 @@ export class MusicsPageComponent implements OnDestroy {
       this.gameLocation.mp3Path();
       untracked(() => this.loadTracks());
     });
+    effect(() => {
+      this.downloadActivity.inventoryEpoch();
+      untracked(() => this.loadLocal());
+    });
   }
 
   ngOnDestroy(): void {
@@ -142,8 +148,16 @@ export class MusicsPageComponent implements OnDestroy {
     return this.loadout.activeMusicIds().has(id);
   }
 
+  isDownloading(id: number): boolean {
+    return this.downloadingIds().has(id);
+  }
+
   isDownloaded(id: number): boolean {
     return this.downloadedIds().has(id) || this.isActive(id);
+  }
+
+  canApply(item: CatalogItem): boolean {
+    return canApplySoundCategory(item.category);
   }
 
   downloadLabel(id: number): string {
@@ -272,15 +286,21 @@ export class MusicsPageComponent implements OnDestroy {
   }
 
   download(item: CatalogItem): void {
-    if (this.isBusy()) {
+    if (this.isDownloading(item.id)) {
       return;
     }
-    this.downloadingId.set(item.id);
+    this.downloadingIds.update((ids) => new Set(ids).add(item.id));
     this.ipc
       .request(IPC_MESSAGE.SOUND_DOWNLOAD, { id: item.id })
       .then((reply) => {
         if (!reply.ok) {
           this.setNote(item.id, reply.error ?? 'Download failed.');
+          this.downloadedIds.update((ids) => {
+            const next = new Set(ids);
+            next.delete(item.id);
+            return next;
+          });
+          this.loadLocal();
           return;
         }
         this.downloadedIds.update((ids) => new Set(ids).add(item.id));
@@ -292,20 +312,29 @@ export class MusicsPageComponent implements OnDestroy {
       })
       .catch((error: unknown) => {
         this.setNote(item.id, error instanceof Error ? error.message : 'Download failed.');
+        this.loadLocal();
       })
       .finally(() => {
-        this.downloadingId.set(null);
+        this.downloadingIds.update((ids) => {
+          const next = new Set(ids);
+          next.delete(item.id);
+          return next;
+        });
         this.downloadActivity.clear('sounds', item.id);
       });
   }
 
+  cancelDownload(item: CatalogItem): void {
+    this.downloadActivity.cancel('sounds', item.id);
+  }
+
   apply(item: CatalogItem): void {
-    if (this.isBusy()) {
+    if (this.isBusy() || !this.canApply(item)) {
       return;
     }
     this.applyingId.set(item.id);
     this.ipc
-      .request(IPC_MESSAGE.MUSIC_APPLY, { id: item.id })
+      .request(IPC_MESSAGE.MUSIC_APPLY, { id: item.id, category: item.category })
       .then((reply) => {
         if (!reply.ok) {
           this.setNote(item.id, reply.error ?? 'Apply failed.');
@@ -324,6 +353,34 @@ export class MusicsPageComponent implements OnDestroy {
       })
       .finally(() => {
         this.applyingId.set(null);
+      });
+  }
+
+  reset(item: CatalogItem): void {
+    if (this.isBusy() || !this.isActive(item.id)) {
+      return;
+    }
+    this.resettingId.set(item.id);
+    this.ipc
+      .request(IPC_MESSAGE.MUSIC_RESET, { id: item.id })
+      .then((reply) => {
+        if (!reply.ok) {
+          this.setNote(item.id, reply.error ?? 'Reset failed.');
+          return;
+        }
+        const result = reply.payload as ApplyAttempt | undefined;
+        this.setNote(item.id, result?.reason ?? 'Removed.');
+        void this.loadout.refresh().then(() => {
+          if (this.libraryFilter() === 'applied') {
+            this.loadLibrary();
+          }
+        });
+      })
+      .catch((error: unknown) => {
+        this.setNote(item.id, error instanceof Error ? error.message : 'Reset failed.');
+      })
+      .finally(() => {
+        this.resettingId.set(null);
       });
   }
 
@@ -432,6 +489,9 @@ export class MusicsPageComponent implements OnDestroy {
       }
       this.folders.set(folders);
       this.sizeBytes.set(sizes);
+      if (this.isLibrary()) {
+        this.loadLibrary();
+      }
     });
   }
 
@@ -485,6 +545,7 @@ export class MusicsPageComponent implements OnDestroy {
         }
         const data = reply.payload as CatalogPage | undefined;
         const list = data?.items ?? [];
+        this.rememberCategories(list);
         this.items.set(list);
         this.page.set(1);
         this.totalCount.set(list.length);
@@ -534,6 +595,7 @@ export class MusicsPageComponent implements OnDestroy {
           return;
         }
 
+        this.rememberCategories(data.items);
         this.items.set(data.items);
         this.page.set(data.page);
         this.totalCount.set(data.totalCount);
@@ -550,6 +612,29 @@ export class MusicsPageComponent implements OnDestroy {
           this.loading.set(false);
         }
       });
+  }
+
+  private rememberCategories(list: CatalogItem[]): void {
+    this.categoryById.update((map) => {
+      const next = { ...map };
+      for (const item of list) {
+        if (item.category && item.category !== 'Sounds') {
+          next[item.id] = item.category;
+        }
+      }
+      return next;
+    });
+  }
+
+  private withKnownCategory(item: CatalogItem): CatalogItem {
+    const known = this.categoryById()[item.id];
+    if (!known || item.category === known) {
+      return item;
+    }
+    if (item.category && item.category !== 'Sounds') {
+      return item;
+    }
+    return { ...item, category: known };
   }
 
   private computeTotalPages(data: CatalogPage): number {

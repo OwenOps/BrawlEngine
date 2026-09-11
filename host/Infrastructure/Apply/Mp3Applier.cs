@@ -4,32 +4,38 @@ namespace BrawlEngine.Host.Infrastructure.Apply;
 
 public static class Mp3Applier
 {
-    public static int ApplyDownloadFolder(string audioFolder, string downloadFolder)
+    public static int ApplyDownloadFolder(string audioFolder, string downloadFolder, string? category = null)
     {
+        var preferSubfolder = SoundApplyKind.PreferSubfolder(category);
         var applied = 0;
         var (archives, _) = MapArtZipApplier.PickArchives(downloadFolder);
         foreach (var archive in archives)
         {
-            applied += ApplyArchive(audioFolder, archive);
+            applied += ApplyArchive(audioFolder, archive, preferSubfolder);
         }
 
         foreach (var file in Directory.EnumerateFiles(downloadFolder, "*.*"))
         {
-            if (!IsAudioFile(file))
+            if (!IsAudioFile(file) || SoundApplyKind.SkipFileName(file))
             {
                 continue;
             }
 
-            applied += ApplyAudioFile(audioFolder, file);
+            applied += ApplyAudioFile(audioFolder, file, preferSubfolder);
         }
 
         return applied;
     }
 
-    public static int ApplyAudioFile(string audioFolder, string sourceFile)
+    public static int ApplyAudioFile(string audioFolder, string sourceFile, string? preferSubfolder = null)
     {
+        if (SoundApplyKind.SkipFileName(sourceFile))
+        {
+            return 0;
+        }
+
         var name = Path.GetFileName(sourceFile);
-        var match = FindVanillaTrack(audioFolder, name);
+        var match = FindVanillaTrack(audioFolder, name, preferSubfolder);
         if (match is null || !SameFormat(sourceFile, match))
         {
             return 0;
@@ -37,13 +43,19 @@ public static class Mp3Applier
 
         VanillaBackup.BackupAudioIfMissing(audioFolder, match);
         var (gameFile, _) = VanillaBackup.AudioPaths(audioFolder, match);
+        var destDir = Path.GetDirectoryName(gameFile);
+        if (!string.IsNullOrEmpty(destDir))
+        {
+            Directory.CreateDirectory(destDir);
+        }
+
         File.Copy(sourceFile, gameFile, overwrite: true);
         return 1;
     }
 
     public static int ReplaceTrack(string audioFolder, string targetFileName, string sourceFile)
     {
-        var match = FindVanillaTrack(audioFolder, targetFileName);
+        var match = FindVanillaTrack(audioFolder, targetFileName, preferSubfolder: null);
         if (match is null)
         {
             throw new InvalidOperationException("That track is not in the game audio folder.");
@@ -52,6 +64,12 @@ public static class Mp3Applier
         EnsureSameFormat(sourceFile, match);
         VanillaBackup.BackupAudioIfMissing(audioFolder, match);
         var (gameFile, _) = VanillaBackup.AudioPaths(audioFolder, match);
+        var destDir = Path.GetDirectoryName(gameFile);
+        if (!string.IsNullOrEmpty(destDir))
+        {
+            Directory.CreateDirectory(destDir);
+        }
+
         File.Copy(sourceFile, gameFile, overwrite: true);
         return 1;
     }
@@ -65,6 +83,7 @@ public static class Mp3Applier
     {
         var ext = Path.GetExtension(path);
         return ext.Equals(".wem", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".bnk", StringComparison.OrdinalIgnoreCase)
             || ext.Equals(".mp3", StringComparison.OrdinalIgnoreCase);
     }
 
@@ -93,7 +112,7 @@ public static class Mp3Applier
             + Path.GetExtension(vanillaFileName) + ").");
     }
 
-    private static int ApplyArchive(string audioFolder, string archivePath)
+    private static int ApplyArchive(string audioFolder, string archivePath, string? preferSubfolder)
     {
         var extractRoot = Path.Combine(
             Path.GetTempPath(),
@@ -108,12 +127,12 @@ public static class Mp3Applier
             var applied = 0;
             foreach (var file in Directory.EnumerateFiles(extractRoot, "*.*", SearchOption.AllDirectories))
             {
-                if (!IsAudioFile(file))
+                if (!IsAudioFile(file) || SoundApplyKind.SkipFileName(file))
                 {
                     continue;
                 }
 
-                applied += ApplyAudioFile(audioFolder, file);
+                applied += ApplyAudioFile(audioFolder, file, preferSubfolder);
             }
 
             return applied;
@@ -133,7 +152,7 @@ public static class Mp3Applier
         }
     }
 
-    private static string? FindVanillaTrack(string audioFolder, string fileName)
+    private static string? FindVanillaTrack(string audioFolder, string fileName, string? preferSubfolder)
     {
         var wanted = Path.GetFileName(fileName);
         if (string.IsNullOrWhiteSpace(wanted) || !Directory.Exists(audioFolder))
@@ -141,14 +160,37 @@ public static class Mp3Applier
             return null;
         }
 
-        foreach (var existing in Directory.GetFiles(audioFolder, "*.*"))
+        var matches = Directory.GetFiles(audioFolder, wanted, SearchOption.AllDirectories);
+        if (matches.Length == 0)
         {
-            if (string.Equals(Path.GetFileName(existing), wanted, StringComparison.OrdinalIgnoreCase))
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(preferSubfolder))
+        {
+            foreach (var path in matches)
             {
-                return Path.GetFileName(existing);
+                var relative = Path.GetRelativePath(audioFolder, path);
+                var first = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0];
+                if (first.Equals(preferSubfolder, StringComparison.OrdinalIgnoreCase))
+                {
+                    return relative;
+                }
             }
         }
 
-        return null;
+        var shortest = matches[0];
+        var shortestLen = Path.GetRelativePath(audioFolder, shortest).Length;
+        foreach (var path in matches)
+        {
+            var len = Path.GetRelativePath(audioFolder, path).Length;
+            if (len < shortestLen)
+            {
+                shortest = path;
+                shortestLen = len;
+            }
+        }
+
+        return Path.GetRelativePath(audioFolder, shortest);
     }
 }

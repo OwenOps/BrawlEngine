@@ -6,7 +6,7 @@
   </ol>
   @if (tracks().length === 0) {
     <p class="error">
-      No in-game tracks yet. Use <strong>Set music folder</strong> in the sidebar, then Retry.
+      No in-game tracks yet. Use <strong>Set audio folder</strong> in the sidebar, then Retry.
     </p>
     <button type="button" (click)="reloadTracks()">Retry</button>
   } @else {
@@ -56,10 +56,11 @@
 
 <header class="page-head">
   <div>
-    <h1>Musics</h1>
+    <h1>Audio</h1>
     <p class="hint">
-      GameBanana Sounds. Apply copies files whose names match a vanilla track (.wem in audio\pc, or .mp3 on old installs).
-      Filter by GameBanana category (Music, Win Theme, Announcer, …).
+      GameBanana Sounds. Apply copies matching vanilla names under <code>audio\pc</code>
+      (including <code>English(US)</code>): Announcer, weapons, UI, Podium, Dubs, Signature, Voicelines, Other.
+      Chips only filter the list. Music / Win Theme / Main Theme cannot Apply (not a random MP3 / bank swap).
     </p>
     <button type="button" class="link" (click)="openDownloadsFolder()">
       Open downloads folder
@@ -165,7 +166,7 @@
   }
   <div class="sound-list" [class.is-loading]="loading() && shownItems().length > 0">
   @for (item of shownItems(); track item.id) {
-    <article class="sound-row" [class.is-downloading]="downloadingId() === item.id">
+    <article class="sound-row" [class.is-downloading]="isDownloading(item.id)">
       <div class="sound-main">
         <p class="sound-name">{{ item.name }}</p>
         <p class="author">{{ item.author }} · {{ item.category }}</p>
@@ -174,7 +175,7 @@
         } @else if (isDownloaded(item.id)) {
           <span class="badge downloaded">Downloaded</span>
         }
-        @if (downloadingId() === item.id) {
+        @if (isDownloading(item.id)) {
           <div class="progress-bar" [class.indeterminate]="downloadActivity.percentFor('sounds', item.id) === null">
             <div class="progress-bar-fill" [style.width.%]="downloadActivity.percentFor('sounds', item.id) ?? 100"></div>
           </div>
@@ -187,12 +188,27 @@
         }
       </div>
       <div class="actions">
-        @if (!isDownloaded(item.id)) {
-          <button type="button" class="primary" (click)="download(item)" [disabled]="isBusy()">
-            {{ downloadingId() === item.id ? downloadLabel(item.id) : 'Download' }}
+        @if (isDownloading(item.id)) {
+          <button type="button" class="primary" disabled>
+            {{ downloadLabel(item.id) }}
+          </button>
+          <button type="button" (click)="cancelDownload(item)">Cancel</button>
+        } @else if (!isDownloaded(item.id)) {
+          <button type="button" class="primary" (click)="download(item)">
+            Download
           </button>
         } @else {
-          <button type="button" class="primary" (click)="apply(item)" [disabled]="isBusy()">
+          <button
+            type="button"
+            class="primary"
+            (click)="apply(item)"
+            [disabled]="isBusy() || !canApply(item)"
+            [attr.title]="
+              canApply(item)
+                ? null
+                : 'Music, Win Theme, and Main Theme cannot Apply (need matching banks, not a random MP3).'
+            "
+          >
             {{
               applyingId() === item.id
                 ? 'Applying…'
@@ -202,6 +218,11 @@
             }}
           </button>
           <div class="actions-row">
+            @if (isActive(item.id)) {
+              <button type="button" class="danger" (click)="reset(item)" [disabled]="isBusy()">
+                {{ resettingId() === item.id ? 'Resetting…' : 'Reset' }}
+              </button>
+            }
             <button type="button" (click)="openFolder(item)">Open folder</button>
             <button
               type="button"
@@ -241,7 +262,7 @@
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sound-info-title" (click)="$event.stopPropagation()">
       <h2 id="sound-info-title">{{ item.name }}</h2>
       <p class="hint">{{ item.author }} · {{ item.category }}</p>
-      <p class="hint">Sounds on this tab come from GameBanana. Apply only replaces matching .mp3 names.</p>
+      <p class="hint">Sounds on this tab come from GameBanana. Apply copies matching .bnk / .wem names. Music / Win / Main Theme cannot Apply.</p>
       <div class="sheet-actions">
         <button type="button" class="primary" (click)="openProfile(item.profileUrl)">
           View on GameBanana
