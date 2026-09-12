@@ -25,6 +25,7 @@ import { LocalDownloadList, MapNamesResult } from '../../core/ipc/contracts/down
 import { IPC_MESSAGE } from '../../core/ipc/ipc.constants';
 import { IpcService } from '../../core/ipc/ipc.service';
 import { LoadoutService } from '../../core/loadout/loadout.service';
+import { GAMEBANANA_WAIT } from '../../core/ui/app-shell.constants';
 
 @Component({
   selector: 'app-maps-page',
@@ -38,12 +39,13 @@ export class MapsPageComponent implements OnDestroy {
   private readonly loadout = inject(LoadoutService);
   private readonly browser = inject(BrowserService);
   readonly downloadActivity = inject(DownloadActivityService);
+  readonly gameBananaWait = GAMEBANANA_WAIT;
   private searchTimer: ReturnType<typeof setTimeout> | undefined;
   private loadToken = 0;
 
   readonly sorts = CATALOG_SORTS;
   readonly libraryFilters = LIBRARY_FILTERS;
-  readonly libraryFilter = signal<LibraryFilter>('all');
+  readonly libraryFilter = signal<LibraryFilter>('disk');
   readonly queryInput = signal('');
   readonly query = signal('');
   readonly sort = signal<CatalogSort>('newest');
@@ -87,7 +89,6 @@ export class MapsPageComponent implements OnDestroy {
 
   constructor() {
     this.loadLocal();
-    this.load(1);
     effect(() => {
       this.downloadActivity.inventoryEpoch();
       untracked(() => this.loadLocal());
@@ -285,6 +286,7 @@ export class MapsPageComponent implements OnDestroy {
           return next;
         });
         this.downloadActivity.clear('maps', mod.id);
+        this.downloadActivity.notifyInventoryChanged();
       });
   }
 
@@ -326,41 +328,60 @@ export class MapsPageComponent implements OnDestroy {
   }
 
   reset(mod: CatalogItem): void {
-    if (this.isBusy() || !this.isActive(mod.id)) {
+    void this.resetApplied(mod);
+  }
+
+  /** Frees disk space. If the mod is applied, a second confirm can also Reset it in the game. */
+  deleteDownload(mod: CatalogItem): void {
+    if (this.isBusy()) {
       return;
     }
+    const choice = confirmDeleteDownload(mod.name, this.sizeBytes()[mod.id], this.isActive(mod.id));
+    if (!choice.proceed) {
+      return;
+    }
+    if (choice.alsoReset && this.isActive(mod.id)) {
+      void this.resetApplied(mod).then((ok) => {
+        if (ok) {
+          this.removeDownloadFolder(mod, true);
+        }
+      });
+      return;
+    }
+    this.removeDownloadFolder(mod, false);
+  }
+
+  private resetApplied(mod: CatalogItem): Promise<boolean> {
+    if (this.isBusy() || !this.isActive(mod.id)) {
+      return Promise.resolve(false);
+    }
     this.resettingId.set(mod.id);
-    this.ipc
+    return this.ipc
       .request(IPC_MESSAGE.MOD_RESET, { id: mod.id })
       .then((reply) => {
         if (!reply.ok) {
           this.setNote(mod.id, reply.error ?? 'Reset failed.');
-          return;
+          return false;
         }
         const result = reply.payload as ApplyAttempt | undefined;
         this.setNote(mod.id, result?.reason ?? 'Removed.');
-        void this.loadout.refresh().then(() => {
+        return this.loadout.refresh().then(() => {
           if (this.libraryFilter() === 'applied') {
             this.loadLibrary();
           }
+          return true;
         });
       })
       .catch((error: unknown) => {
         this.setNote(mod.id, error instanceof Error ? error.message : 'Reset failed.');
+        return false;
       })
       .finally(() => {
         this.resettingId.set(null);
       });
   }
 
-  /** Frees disk space. Safe even if the mod is currently applied: Reapply just re-downloads it. */
-  deleteDownload(mod: CatalogItem): void {
-    if (this.isBusy()) {
-      return;
-    }
-    if (!confirmDeleteDownload(mod.name, this.sizeBytes()[mod.id])) {
-      return;
-    }
+  private removeDownloadFolder(mod: CatalogItem, alsoReset: boolean): void {
     this.deletingId.set(mod.id);
     this.ipc
       .request(IPC_MESSAGE.DOWNLOADS_DELETE, { kind: 'maps', id: mod.id })
@@ -386,10 +407,18 @@ export class MapsPageComponent implements OnDestroy {
           const { [mod.id]: _size, ...rest } = sizes;
           return rest;
         });
-        this.setNote(mod.id, 'Removed from disk.');
+        this.setNote(
+          mod.id,
+          alsoReset
+            ? 'Reset in the game and removed from disk.'
+            : this.isActive(mod.id)
+              ? 'Removed from disk. Still applied in the game.'
+              : 'Removed from disk.',
+        );
         if (this.isLibrary()) {
           this.loadLibrary();
         }
+        this.downloadActivity.notifyInventoryChanged();
       })
       .catch((error: unknown) => {
         this.setNote(mod.id, error instanceof Error ? error.message : 'Delete failed.');
@@ -424,6 +453,9 @@ export class MapsPageComponent implements OnDestroy {
       this.folders.set(folders);
       this.mapCounts.set(counts);
       this.sizeBytes.set(sizes);
+      if (this.isLibrary()) {
+        this.loadLibrary();
+      }
     });
   }
 

@@ -27,6 +27,7 @@ import { LocalDownloadList } from '../../core/ipc/contracts/download.contracts';
 import { IPC_MESSAGE } from '../../core/ipc/ipc.constants';
 import { IpcService } from '../../core/ipc/ipc.service';
 import { LoadoutService } from '../../core/loadout/loadout.service';
+import { GAMEBANANA_WAIT } from '../../core/ui/app-shell.constants';
 import {
   MUSIC_SLOTS,
   asMusicSlot,
@@ -47,12 +48,13 @@ export class MusicsPageComponent implements OnDestroy {
   private readonly browser = inject(BrowserService);
   private readonly gameLocation = inject(GameLocationState);
   readonly downloadActivity = inject(DownloadActivityService);
+  readonly gameBananaWait = GAMEBANANA_WAIT;
   private searchTimer: ReturnType<typeof setTimeout> | undefined;
   private loadToken = 0;
 
   readonly sorts = CATALOG_SORTS;
   readonly libraryFilters = LIBRARY_FILTERS;
-  readonly libraryFilter = signal<LibraryFilter>('all');
+  readonly libraryFilter = signal<LibraryFilter>('disk');
   readonly musicSlots = MUSIC_SLOTS;
   readonly soundCategories = SOUND_CATEGORIES;
   readonly categoryId = signal(0);
@@ -127,7 +129,6 @@ export class MusicsPageComponent implements OnDestroy {
 
   constructor() {
     this.loadLocal();
-    this.load(1);
     effect(() => {
       this.gameLocation.mp3Path();
       untracked(() => this.loadTracks());
@@ -321,6 +322,7 @@ export class MusicsPageComponent implements OnDestroy {
           return next;
         });
         this.downloadActivity.clear('sounds', item.id);
+        this.downloadActivity.notifyInventoryChanged();
       });
   }
 
@@ -357,31 +359,7 @@ export class MusicsPageComponent implements OnDestroy {
   }
 
   reset(item: CatalogItem): void {
-    if (this.isBusy() || !this.isActive(item.id)) {
-      return;
-    }
-    this.resettingId.set(item.id);
-    this.ipc
-      .request(IPC_MESSAGE.MUSIC_RESET, { id: item.id })
-      .then((reply) => {
-        if (!reply.ok) {
-          this.setNote(item.id, reply.error ?? 'Reset failed.');
-          return;
-        }
-        const result = reply.payload as ApplyAttempt | undefined;
-        this.setNote(item.id, result?.reason ?? 'Removed.');
-        void this.loadout.refresh().then(() => {
-          if (this.libraryFilter() === 'applied') {
-            this.loadLibrary();
-          }
-        });
-      })
-      .catch((error: unknown) => {
-        this.setNote(item.id, error instanceof Error ? error.message : 'Reset failed.');
-      })
-      .finally(() => {
-        this.resettingId.set(null);
-      });
+    void this.resetApplied(item);
   }
 
   replaceTrack(): void {
@@ -424,15 +402,62 @@ export class MusicsPageComponent implements OnDestroy {
       });
   }
 
-  /** Frees disk space. Safe even if applied: Reapply just re-downloads it. */
+  /** Frees disk space. If the pack is applied, a second confirm can also Reset it in the game. */
   deleteDownload(id: number): void {
     if (this.isBusy()) {
       return;
     }
     const item = this.shownItems().find((row) => row.id === id);
-    if (!confirmDeleteDownload(item?.name ?? 'this sound', this.sizeBytes()[id])) {
+    const choice = confirmDeleteDownload(
+      item?.name ?? 'this sound',
+      this.sizeBytes()[id],
+      this.isActive(id),
+    );
+    if (!choice.proceed) {
       return;
     }
+    if (choice.alsoReset && item && this.isActive(id)) {
+      void this.resetApplied(item).then((ok) => {
+        if (ok) {
+          this.removeDownloadFolder(id, true);
+        }
+      });
+      return;
+    }
+    this.removeDownloadFolder(id, false);
+  }
+
+  private resetApplied(item: CatalogItem): Promise<boolean> {
+    if (this.isBusy() || !this.isActive(item.id)) {
+      return Promise.resolve(false);
+    }
+    this.resettingId.set(item.id);
+    return this.ipc
+      .request(IPC_MESSAGE.MUSIC_RESET, { id: item.id })
+      .then((reply) => {
+        if (!reply.ok) {
+          this.setNote(item.id, reply.error ?? 'Reset failed.');
+          return false;
+        }
+        const result = reply.payload as ApplyAttempt | undefined;
+        this.setNote(item.id, result?.reason ?? 'Removed.');
+        return this.loadout.refresh().then(() => {
+          if (this.libraryFilter() === 'applied') {
+            this.loadLibrary();
+          }
+          return true;
+        });
+      })
+      .catch((error: unknown) => {
+        this.setNote(item.id, error instanceof Error ? error.message : 'Reset failed.');
+        return false;
+      })
+      .finally(() => {
+        this.resettingId.set(null);
+      });
+  }
+
+  private removeDownloadFolder(id: number, alsoReset: boolean): void {
     this.deletingId.set(id);
     this.ipc
       .request(IPC_MESSAGE.DOWNLOADS_DELETE, { kind: 'sounds', id })
@@ -454,10 +479,18 @@ export class MusicsPageComponent implements OnDestroy {
           const { [id]: _size, ...rest } = sizes;
           return rest;
         });
-        this.setNote(id, 'Removed from disk.');
+        this.setNote(
+          id,
+          alsoReset
+            ? 'Reset in the game and removed from disk.'
+            : this.isActive(id)
+              ? 'Removed from disk. Still applied in the game.'
+              : 'Removed from disk.',
+        );
         if (this.isLibrary()) {
           this.loadLibrary();
         }
+        this.downloadActivity.notifyInventoryChanged();
       })
       .catch((error: unknown) => {
         this.setNote(id, error instanceof Error ? error.message : 'Delete failed.');

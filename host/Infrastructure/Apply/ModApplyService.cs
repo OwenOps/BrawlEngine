@@ -1,4 +1,5 @@
 using BrawlEngine.Host.Domain.Models;
+using BrawlEngine.Host.Infrastructure.Ffdec;
 using BrawlEngine.Host.Infrastructure.GameBanana;
 using BrawlEngine.Host.Infrastructure.Processes;
 using BrawlEngine.Host.Infrastructure.Steam;
@@ -39,6 +40,34 @@ public static class ModApplyService
         }
 
         return ApplySound(musicWrite.Mp3Folder!, soundId, downloadIfMissing, category);
+    }
+
+    public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryApplySkin(int skinId)
+    {
+        var blocked = EnsureCanWrite();
+        if (blocked.Error is not null)
+        {
+            return (false, blocked.Error, null);
+        }
+
+        try
+        {
+            FfdecLibFetch.Ensure();
+        }
+        catch (Exception ex) when (
+            ex is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException
+            or UnauthorizedAccessException)
+        {
+            return (false, "Could not download ffdec_lib.jar. Check your connection and Retry on the Skins tab.", null);
+        }
+
+        var tools = FfdecLocator.Resolve();
+        if (!tools.Ready || tools.JavaPath is null || tools.JarPath is null)
+        {
+            return (false, tools.Error ?? "Java or ffdec_lib.jar is missing.", null);
+        }
+
+        return ApplySkin(blocked.GameRoot!, skinId, tools.JavaPath, tools.JarPath, downloadIfMissing: false);
     }
 
     public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryReplaceTrack(
@@ -141,14 +170,22 @@ public static class ModApplyService
 
         try
         {
-            var restored = VanillaReset.RestoreMapArt(blocked.GameRoot!);
-            if (restored == 0)
+            var restoredMaps = VanillaReset.RestoreMapArt(blocked.GameRoot!);
+            var restoredSwf = VanillaReset.RestoreSwf(blocked.GameRoot!);
+            if (restoredMaps == 0 && restoredSwf == 0)
             {
-                return (false, "Nothing to restore in mapArt. Apply a map mod first so vanilla files are backed up.", null);
+                return (false, "Nothing to restore in mapArt or SWF. Apply a map or skin first so vanilla files are backed up.", null);
             }
 
             LoadoutStore.ClearMaps();
-            return (true, null, new ApplyAttemptDto(true, "Ranked/safe: restored " + restored + " mapArt file(s). Music left unchanged."));
+            LoadoutStore.ClearSkins();
+            return (true, null, new ApplyAttemptDto(
+                true,
+                "Ranked/safe: restored "
+                    + restoredMaps
+                    + " mapArt and "
+                    + restoredSwf
+                    + " SWF file(s). Music left unchanged."));
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
         {
@@ -244,16 +281,81 @@ public static class ModApplyService
         }
     }
 
+    public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryResetSkin(int skinId)
+    {
+        var blocked = EnsureCanWrite();
+        if (blocked.Error is not null)
+        {
+            return (false, blocked.Error, null);
+        }
+
+        var loadout = LoadoutStore.Load();
+        if ((loadout.Skins ?? []).All(entry => entry.ModId != skinId))
+        {
+            return (false, "This skin is not in the current loadout.", null);
+        }
+
+        try
+        {
+            var restored = VanillaReset.RestoreSwf(blocked.GameRoot!);
+            if (restored == 0)
+            {
+                return (false, "Nothing to restore in SWF. Apply a skin first so vanilla files are backed up.", null);
+            }
+
+            LoadoutStore.RemoveSkin(skinId);
+            var remaining = LoadoutStore.Load().Skins ?? [];
+            if (remaining.Count > 0)
+            {
+                try
+                {
+                    FfdecLibFetch.Ensure();
+                }
+                catch (Exception ex) when (
+                    ex is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException
+                    or UnauthorizedAccessException)
+                {
+                    return (false, "Could not download ffdec_lib.jar. Check your connection and Retry on the Skins tab.", null);
+                }
+
+                var tools = FfdecLocator.Resolve();
+                if (!tools.Ready || tools.JavaPath is null || tools.JarPath is null)
+                {
+                    return (false, tools.Error ?? "Java or ffdec_lib.jar is missing.", null);
+                }
+
+                foreach (var entry in remaining)
+                {
+                    var result = ApplySkin(blocked.GameRoot!, entry.ModId, tools.JavaPath, tools.JarPath, downloadIfMissing: false);
+                    if (!result.Ok)
+                    {
+                        return (false, result.Error ?? "Could not reapply the other skins.", null);
+                    }
+                }
+            }
+
+            var extra = remaining.Count == 0
+                ? " No other skins left."
+                : " Reapplied " + remaining.Count + " other skin(s).";
+            return (true, null, new ApplyAttemptDto(true, "Removed this skin." + extra));
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            return (false, "Reset failed: " + ex.Message, null);
+        }
+    }
+
     public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryReapply()
     {
         var loadout = LoadoutStore.Load();
-        if (loadout.Maps.Count == 0 && loadout.Music.Count == 0)
+        var skins = loadout.Skins ?? [];
+        if (loadout.Maps.Count == 0 && loadout.Music.Count == 0 && skins.Count == 0)
         {
             return (false, "No current loadout to reapply.", null);
         }
 
         string? gameRoot = null;
-        if (loadout.Maps.Count > 0)
+        if (loadout.Maps.Count > 0 || skins.Count > 0)
         {
             var blocked = EnsureCanWrite();
             if (blocked.Error is not null)
@@ -308,7 +410,41 @@ public static class ModApplyService
             music++;
         }
 
-        return (true, null, new ApplyAttemptDto(true, "Reapplied " + maps + " map mod(s) and " + music + " sound(s)."));
+        var skinCount = 0;
+        if (skins.Count > 0)
+        {
+            try
+            {
+                FfdecLibFetch.Ensure();
+            }
+            catch (Exception ex) when (
+                ex is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException
+                or UnauthorizedAccessException)
+            {
+                return (false, "Could not download ffdec_lib.jar. Check your connection and Retry on the Skins tab.", null);
+            }
+
+            var tools = FfdecLocator.Resolve();
+            if (!tools.Ready || tools.JavaPath is null || tools.JarPath is null)
+            {
+                return (false, tools.Error ?? "Java or ffdec_lib.jar is missing.", null);
+            }
+
+            foreach (var entry in skins)
+            {
+                var result = ApplySkin(gameRoot!, entry.ModId, tools.JavaPath, tools.JarPath, downloadIfMissing: true);
+                if (!result.Ok)
+                {
+                    return (false, result.Error ?? "Reapply failed.", null);
+                }
+
+                skinCount++;
+            }
+        }
+
+        return (true, null, new ApplyAttemptDto(
+            true,
+            "Reapplied " + maps + " map(s), " + music + " sound(s), and " + skinCount + " skin(s)."));
     }
 
     private static (string? GameRoot, string? Error) EnsureCanWrite()
@@ -479,6 +615,174 @@ public static class ModApplyService
         catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException)
         {
             return (false, "Apply failed: " + ex.Message, null);
+        }
+    }
+
+    private static (bool Ok, string? Error, ApplyAttemptDto? Result) ApplySkin(
+        string gameRoot,
+        int skinId,
+        string javaPath,
+        string jarPath,
+        bool downloadIfMissing)
+    {
+        var folder = AppPaths.SkinDownloadsFolder(skinId);
+        if (!Directory.Exists(folder) || !Directory.EnumerateFileSystemEntries(folder).Any())
+        {
+            if (!downloadIfMissing)
+            {
+                return (false, "Download this skin first, then Apply.", null);
+            }
+
+            try
+            {
+                DownloadGate
+                    .RunAsync(
+                        "skins",
+                        skinId,
+                        token => ModDownloadClient.DownloadAsync(
+                            skinId,
+                            "Mod",
+                            AppPaths.SkinDownloadsFolder(skinId),
+                            progressKind: "skins",
+                            cancellationToken: token))
+                    .GetAwaiter()
+                    .GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                return (false, "Download cancelled.", null);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException
+                or InvalidOperationException or IOException)
+            {
+                return (false, "Download failed: " + ex.Message, null);
+            }
+        }
+
+        var (bmodPaths, extractRoot, locateError) = SkinBmodLocator.Locate(folder);
+        if (locateError is not null || bmodPaths.Count == 0)
+        {
+            return (false, locateError ?? "No .bmod found. Download this skin first, then Apply.", null);
+        }
+
+        var snapshots = new List<(string GameFile, string Snapshot)>();
+        var workRoot = Path.Combine(Path.GetTempPath(), "BrawlEngine", "skin-apply", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workRoot);
+
+        try
+        {
+            var (pack, parseError) = BmodManifest.TryParseMany(bmodPaths);
+            if (parseError is not null || pack is null)
+            {
+                return (false, parseError ?? "This pack is not understood. Apply stopped.", null);
+            }
+
+            var jobs = new List<(
+                string Relative,
+                string GameFile,
+                IReadOnlyList<string> Sprites,
+                IReadOnlyList<BmodColorScript> ColorScripts)>();
+            foreach (var swf in pack.Swfs)
+            {
+                var relative = VanillaBackup.FindSwfRelative(gameRoot, swf.FileName);
+                if (relative is null)
+                {
+                    return (false, "Game SWF not found: " + swf.FileName + ". Apply stopped.", null);
+                }
+
+                var (gameFile, _) = VanillaBackup.SwfPaths(gameRoot, relative);
+                if (!File.Exists(gameFile))
+                {
+                    return (false, "Game SWF not found: " + swf.FileName + ". Apply stopped.", null);
+                }
+
+                jobs.Add((relative, gameFile, swf.Sprites, swf.ColorScripts));
+            }
+
+            foreach (var job in jobs)
+            {
+                VanillaBackup.BackupSwfIfMissing(gameRoot, job.Relative);
+                var snapshot = Path.Combine(workRoot, Guid.NewGuid().ToString("N") + ".swf");
+                File.Copy(job.GameFile, snapshot, overwrite: false);
+                snapshots.Add((job.GameFile, snapshot));
+            }
+
+            var replaced = 0;
+            foreach (var job in jobs)
+            {
+                var outFile = Path.Combine(workRoot, Guid.NewGuid().ToString("N") + "-out.swf");
+                var javaError = FfdecSkinApplier.ReplaceSprites(
+                    javaPath,
+                    jarPath,
+                    bmodPaths,
+                    job.GameFile,
+                    outFile,
+                    job.Sprites,
+                    job.ColorScripts,
+                    out var copied);
+                if (javaError is not null)
+                {
+                    RestoreSnapshots(snapshots);
+                    return (false, javaError, null);
+                }
+
+                if (!File.Exists(outFile))
+                {
+                    RestoreSnapshots(snapshots);
+                    return (false, "Java did not write a patched SWF.", null);
+                }
+
+                if (copied == 0)
+                {
+                    continue;
+                }
+
+                File.Copy(outFile, job.GameFile, overwrite: true);
+                replaced += copied;
+            }
+
+            var reason = "Applied " + replaced + " sprite(s) in " + jobs.Count + " SWF(s).";
+            try
+            {
+                LoadoutStore.RecordSkinApplied(skinId);
+            }
+            catch (IOException ex)
+            {
+                reason += " Could not save loadout: " + ex.Message;
+            }
+
+            return (true, null, new ApplyAttemptDto(true, reason));
+        }
+        catch (Exception ex) when (
+            ex is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            RestoreSnapshots(snapshots);
+            return (false, "Apply failed: " + ex.Message, null);
+        }
+        finally
+        {
+            SkinBmodLocator.TryDelete(extractRoot);
+            SkinBmodLocator.TryDelete(workRoot);
+        }
+    }
+
+    private static void RestoreSnapshots(List<(string GameFile, string Snapshot)> snapshots)
+    {
+        foreach (var pair in snapshots)
+        {
+            try
+            {
+                if (File.Exists(pair.Snapshot))
+                {
+                    File.Copy(pair.Snapshot, pair.GameFile, overwrite: true);
+                }
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
         }
     }
 }
