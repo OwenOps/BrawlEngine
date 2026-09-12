@@ -4,8 +4,10 @@ import {
   HostListener,
   OnDestroy,
   computed,
+  effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { scrollMainToTop } from '../../core/ui/scroll-main';
 import { BrowserService } from '../../core/browser/browser.service';
@@ -45,23 +47,31 @@ export class SkinsPageComponent implements OnDestroy {
   readonly page = signal(1);
   readonly totalPages = signal(1);
   readonly totalCount = signal(0);
-  readonly downloadingId = signal<number | null>(null);
+  readonly downloadingIds = signal<ReadonlySet<number>>(new Set());
   readonly deletingId = signal<number | null>(null);
   readonly cardNote = signal<Record<number, string>>({});
   readonly folders = signal<Record<number, string>>({});
   private readonly sizeBytes = signal<Record<number, number>>({});
   readonly infoItem = signal<CatalogItem | null>(null);
-  readonly isBusy = computed(() => this.downloadingId() !== null || this.deletingId() !== null);
+  readonly isBusy = computed(() => this.deletingId() !== null);
 
   constructor() {
     this.loadLocal();
     this.load(1);
+    effect(() => {
+      this.downloadActivity.inventoryEpoch();
+      untracked(() => this.loadLocal());
+    });
   }
 
   ngOnDestroy(): void {
     if (this.searchTimer !== undefined) {
       clearTimeout(this.searchTimer);
     }
+  }
+
+  isDownloading(id: number): boolean {
+    return this.downloadingIds().has(id);
   }
 
   isDownloaded(id: number): boolean {
@@ -143,15 +153,21 @@ export class SkinsPageComponent implements OnDestroy {
   }
 
   download(item: CatalogItem): void {
-    if (this.isBusy()) {
+    if (this.isDownloading(item.id)) {
       return;
     }
-    this.downloadingId.set(item.id);
+    this.downloadingIds.update((ids) => new Set(ids).add(item.id));
     this.ipc
       .request(IPC_MESSAGE.SKIN_DOWNLOAD, { id: item.id })
       .then((reply) => {
         if (!reply.ok) {
           this.setNote(item.id, reply.error ?? 'Download failed.');
+          this.folders.update((map) => {
+            const next = { ...map };
+            delete next[item.id];
+            return next;
+          });
+          this.loadLocal();
           return;
         }
         const result = reply.payload as DownloadResult | undefined;
@@ -163,11 +179,20 @@ export class SkinsPageComponent implements OnDestroy {
       })
       .catch((error: unknown) => {
         this.setNote(item.id, error instanceof Error ? error.message : 'Download failed.');
+        this.loadLocal();
       })
       .finally(() => {
-        this.downloadingId.set(null);
+        this.downloadingIds.update((ids) => {
+          const next = new Set(ids);
+          next.delete(item.id);
+          return next;
+        });
         this.downloadActivity.clear('skins', item.id);
       });
+  }
+
+  cancelDownload(item: CatalogItem): void {
+    this.downloadActivity.cancel('skins', item.id);
   }
 
   openFolder(item: CatalogItem): void {

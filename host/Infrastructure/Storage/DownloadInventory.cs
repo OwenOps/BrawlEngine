@@ -100,7 +100,7 @@ public static class DownloadInventory
 
     private static bool HasFiles(string folder)
     {
-        return Directory.EnumerateFileSystemEntries(folder).Any();
+        return Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Any();
     }
 
     /// <summary>Frees disk space for a mod already applied — the game files it copied stay untouched.</summary>
@@ -120,5 +120,17 @@ public static class DownloadInventory
 
         Directory.Delete(folder, recursive: true);
         return true;
+    }
+
+    /// <summary>Deletes GameBanana archives under downloads\. Does not touch vanilla backups.</summary>
+    public static void DeleteAllDownloads()
+    {
+        var root = AppPaths.DownloadsRoot;
+        if (!Directory.Exists(root))
+        {
+            return;
+        }
+
+        Directory.Delete(root, recursive: true);
     }
 }

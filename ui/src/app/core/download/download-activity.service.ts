@@ -37,6 +37,18 @@ export class DownloadActivityService {
     return Math.min(100, Math.round((progress.bytesDownloaded / progress.totalBytes) * 100));
   }
 
+  /** Bump when download folders on disk change outside a page (Reset all wipe). */
+  readonly inventoryEpoch = signal(0);
+
+  notifyInventoryChanged(): void {
+    this.inventoryEpoch.update((n) => n + 1);
+  }
+
+  /** Ask the host to stop this download (queued or in flight). */
+  cancel(kind: DownloadKind, id: number): void {
+    void this.ipc.request(IPC_MESSAGE.DOWNLOADS_CANCEL, { kind, id });
+  }
+
   /** Call once a download settles (success or failure) so a stale bar does not linger on the card. */
   clear(kind: DownloadKind, id: number): void {
     this.items.update((map) => {

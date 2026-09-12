@@ -19,9 +19,11 @@ const NO_TIMEOUT = new Set<string>([
   'mod.download',
   'sound.download',
   'skin.download',
+  'downloads.cancel',
   'mod.apply',
   'mod.reset',
   'music.apply',
+  'music.reset',
   'music.replace',
   'mods.resetAll',
   'mods.reapply',
@@ -99,10 +101,10 @@ export class IpcService {
       return 0;
     }
     if (type === 'catalog.byIds') {
-      return 45000;
+      return 90000;
     }
     if (type.startsWith('catalog.')) {
-      return 35000;
+      return 60000;
     }
     return 25000;
   }

@@ -80,7 +80,7 @@
   }
   <div class="grid" [class.is-loading]="loading() && shownItems().length > 0">
   @for (mod of shownItems(); track mod.id) {
-    <article class="card" [class.is-downloading]="downloadingId() === mod.id">
+    <article class="card" [class.is-downloading]="isDownloading(mod.id)">
       <div class="thumb">
         @if (mod.thumbnailUrl) {
           <img [src]="mod.thumbnailUrl" [alt]="mod.name" loading="lazy" decoding="async" />
@@ -104,15 +104,20 @@
       <div class="card-body">
         <h3 [title]="mod.name">{{ mod.name }}</h3>
         <p class="author">{{ mod.author }}</p>
-        @if (downloadingId() === mod.id) {
+        @if (isDownloading(mod.id)) {
           <div class="progress-bar" [class.indeterminate]="downloadPercent(mod.id) === null">
             <div class="progress-bar-fill" [style.width.%]="downloadPercent(mod.id) ?? 100"></div>
           </div>
         }
         <div class="actions">
-          @if (!isDownloaded(mod.id)) {
-            <button type="button" class="primary wide" (click)="download(mod)" [disabled]="isBusy()">
-              {{ downloadingId() === mod.id ? downloadLabel(mod.id) : '⬇ Download' }}
+          @if (isDownloading(mod.id)) {
+            <button type="button" class="primary wide" disabled>
+              {{ downloadLabel(mod.id) }}
+            </button>
+            <button type="button" (click)="cancelDownload(mod)">Cancel</button>
+          } @else if (!isDownloaded(mod.id)) {
+            <button type="button" class="primary wide" (click)="download(mod)">
+              ⬇ Download
             </button>
           } @else {
             <button type="button" class="primary wide" (click)="apply(mod)" [disabled]="isBusy()">

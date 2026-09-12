@@ -57,7 +57,7 @@
   }
   <div class="grid" [class.is-loading]="loading() && items().length > 0">
   @for (item of items(); track item.id) {
-    <article class="card" [class.is-downloading]="downloadingId() === item.id">
+    <article class="card" [class.is-downloading]="isDownloading(item.id)">
       <div class="thumb">
         @if (item.thumbnailUrl) {
           <img [src]="item.thumbnailUrl" [alt]="item.name" loading="lazy" decoding="async" />
@@ -76,15 +76,20 @@
       <div class="card-body">
         <h3 [title]="item.name">{{ item.name }}</h3>
         <p class="author">{{ item.author }} · {{ item.category }}</p>
-        @if (downloadingId() === item.id) {
+        @if (isDownloading(item.id)) {
           <div class="progress-bar" [class.indeterminate]="downloadActivity.percentFor('skins', item.id) === null">
             <div class="progress-bar-fill" [style.width.%]="downloadActivity.percentFor('skins', item.id) ?? 100"></div>
           </div>
         }
         <div class="actions">
-          @if (!isDownloaded(item.id)) {
-            <button type="button" class="primary wide" (click)="download(item)" [disabled]="isBusy()">
-              {{ downloadingId() === item.id ? downloadLabel(item.id) : '⬇ Download' }}
+          @if (isDownloading(item.id)) {
+            <button type="button" class="primary wide" disabled>
+              {{ downloadLabel(item.id) }}
+            </button>
+            <button type="button" (click)="cancelDownload(item)">Cancel</button>
+          } @else if (!isDownloaded(item.id)) {
+            <button type="button" class="primary wide" (click)="download(item)">
+              ⬇ Download
             </button>
           } @else {
             <div class="actions-row">

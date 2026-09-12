@@ -4,8 +4,10 @@ import {
   HostListener,
   OnDestroy,
   computed,
+  effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { LIBRARY_FILTERS, LibraryFilter } from '../../core/catalog/library-filter';
 import { scrollMainToTop } from '../../core/ui/scroll-main';
@@ -51,7 +53,7 @@ export class MapsPageComponent implements OnDestroy {
   readonly page = signal(1);
   readonly totalPages = signal(1);
   readonly totalCount = signal(0);
-  readonly downloadingId = signal<number | null>(null);
+  readonly downloadingIds = signal<ReadonlySet<number>>(new Set());
   readonly applyingId = signal<number | null>(null);
   readonly resettingId = signal<number | null>(null);
   readonly deletingId = signal<number | null>(null);
@@ -65,7 +67,6 @@ export class MapsPageComponent implements OnDestroy {
   private readonly sizeBytes = signal<Record<number, number>>({});
   readonly isBusy = computed(
     () =>
-      this.downloadingId() !== null ||
       this.applyingId() !== null ||
       this.resettingId() !== null ||
       this.deletingId() !== null ||
@@ -87,6 +88,10 @@ export class MapsPageComponent implements OnDestroy {
   constructor() {
     this.loadLocal();
     this.load(1);
+    effect(() => {
+      this.downloadActivity.inventoryEpoch();
+      untracked(() => this.loadLocal());
+    });
   }
 
   ngOnDestroy(): void {
@@ -97,6 +102,10 @@ export class MapsPageComponent implements OnDestroy {
 
   isActive(modId: number): boolean {
     return this.loadout.activeMapIds().has(modId);
+  }
+
+  isDownloading(modId: number): boolean {
+    return this.downloadingIds().has(modId);
   }
 
   isDownloaded(modId: number): boolean {
@@ -240,16 +249,22 @@ export class MapsPageComponent implements OnDestroy {
   }
 
   download(mod: CatalogItem): void {
-    if (this.isBusy()) {
+    if (this.isDownloading(mod.id)) {
       return;
     }
-    this.downloadingId.set(mod.id);
+    this.downloadingIds.update((ids) => new Set(ids).add(mod.id));
 
     this.ipc
       .request(IPC_MESSAGE.MOD_DOWNLOAD, { id: mod.id })
       .then((reply) => {
         if (!reply.ok) {
           this.setNote(mod.id, reply.error ?? 'Download failed.');
+          this.downloadedIds.update((ids) => {
+            const next = new Set(ids);
+            next.delete(mod.id);
+            return next;
+          });
+          this.loadLocal();
           return;
         }
         this.downloadedIds.update((ids) => new Set(ids).add(mod.id));
@@ -261,11 +276,20 @@ export class MapsPageComponent implements OnDestroy {
       })
       .catch((error: unknown) => {
         this.setNote(mod.id, error instanceof Error ? error.message : 'Download failed.');
+        this.loadLocal();
       })
       .finally(() => {
-        this.downloadingId.set(null);
+        this.downloadingIds.update((ids) => {
+          const next = new Set(ids);
+          next.delete(mod.id);
+          return next;
+        });
         this.downloadActivity.clear('maps', mod.id);
       });
+  }
+
+  cancelDownload(mod: CatalogItem): void {
+    this.downloadActivity.cancel('maps', mod.id);
   }
 
   apply(mod: CatalogItem): void {
