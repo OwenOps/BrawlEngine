@@ -14,7 +14,7 @@ public static class Mp3Applier
             applied += ApplyArchive(audioFolder, archive, preferSubfolder);
         }
 
-        foreach (var file in Directory.EnumerateFiles(downloadFolder, "*.*"))
+        foreach (var file in Directory.EnumerateFiles(downloadFolder, "*.*", SearchOption.AllDirectories))
         {
             if (!IsAudioFile(file) || SoundApplyKind.SkipFileName(file))
             {

@@ -25,7 +25,14 @@ public static class ModApplyService
             return (false, "mapArt folder missing. Choose the Brawlhalla game folder in the sidebar (the folder that contains mapArt).", null);
         }
 
-        return ApplyMapMod(blocked.GameRoot!, modId, downloadIfMissing);
+        ApplyProgress.Begin("maps", modId, "apply", 1);
+        var applied = ApplyMapMod(blocked.GameRoot!, modId, downloadIfMissing);
+        if (applied.Ok)
+        {
+            ApplyProgress.Report(1, 1);
+        }
+
+        return applied;
     }
 
     public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryApplySound(
@@ -39,7 +46,14 @@ public static class ModApplyService
             return (false, musicWrite.Error, null);
         }
 
-        return ApplySound(musicWrite.Mp3Folder!, soundId, downloadIfMissing, category);
+        ApplyProgress.Begin("sounds", soundId, "apply", 1);
+        var applied = ApplySound(musicWrite.Mp3Folder!, soundId, downloadIfMissing, category);
+        if (applied.Ok)
+        {
+            ApplyProgress.Report(1, 1);
+        }
+
+        return applied;
     }
 
     public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryApplySkin(int skinId)
@@ -67,7 +81,23 @@ public static class ModApplyService
             return (false, tools.Error ?? "Java or ffdec_lib.jar is missing.", null);
         }
 
-        return ApplySkin(blocked.GameRoot!, skinId, tools.JavaPath, tools.JarPath, downloadIfMissing: false);
+        ApplyProgress.Begin("skins", skinId, "apply", 1);
+        var replaced = DropSameLegendSkins(blocked.GameRoot!, skinId, tools.JavaPath, tools.JarPath);
+        if (replaced.Error is not null)
+        {
+            return (false, replaced.Error, null);
+        }
+
+        var applied = ApplySkin(blocked.GameRoot!, skinId, tools.JavaPath, tools.JarPath, downloadIfMissing: false);
+        if (!applied.Ok || applied.Result is null || replaced.Count == 0)
+        {
+            return applied;
+        }
+
+        var extra = replaced.Count == 1
+            ? " Replaced the previous " + replaced.Legend + " skin."
+            : " Replaced " + replaced.Count + " previous " + replaced.Legend + " skins.";
+        return (true, null, applied.Result with { Reason = (applied.Result.Reason ?? "Applied.") + extra });
     }
 
     public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryReplaceTrack(
@@ -171,7 +201,7 @@ public static class ModApplyService
         try
         {
             var restoredMaps = VanillaReset.RestoreMapArt(blocked.GameRoot!);
-            var restoredSwf = VanillaReset.RestoreSwf(blocked.GameRoot!);
+            var restoredSwf = VanillaReset.RestoreSwf(blocked.GameRoot!, includeSoundSwf: false);
             if (restoredMaps == 0 && restoredSwf == 0)
             {
                 return (false, "Nothing to restore in mapArt or SWF. Apply a map or skin first so vanilla files are backed up.", null);
@@ -209,6 +239,9 @@ public static class ModApplyService
 
         try
         {
+            var remaining = loadout.Maps.Where(entry => entry.ModId != modId).ToList();
+            var total = 1 + remaining.Count;
+            ApplyProgress.Begin("maps", modId, "reset", total);
             var restored = VanillaReset.RestoreMapArt(blocked.GameRoot!);
             if (restored == 0)
             {
@@ -216,7 +249,8 @@ public static class ModApplyService
             }
 
             LoadoutStore.RemoveMap(modId);
-            var remaining = LoadoutStore.Load().Maps;
+            ApplyProgress.Report(1, total);
+            var done = 1;
             foreach (var entry in remaining)
             {
                 var result = ApplyMapMod(blocked.GameRoot!, entry.ModId, downloadIfMissing: true);
@@ -224,6 +258,9 @@ public static class ModApplyService
                 {
                     return (false, result.Error ?? "Could not reapply the other maps.", null);
                 }
+
+                done++;
+                ApplyProgress.Report(done, total);
             }
 
             var extra = remaining.Count == 0
@@ -253,14 +290,24 @@ public static class ModApplyService
 
         try
         {
+            var remaining = loadout.Music.Where(entry => entry.ModId != soundId).ToList();
+            var total = 1 + remaining.Count;
+            ApplyProgress.Begin("sounds", soundId, "reset", total);
             var restored = VanillaReset.RestoreMp3();
+            var game = BrawlhallaLocator.Resolve();
+            if (game.Found && game.Path is not null)
+            {
+                restored += VanillaReset.RestoreSoundSwf(game.Path);
+            }
+
             if (restored == 0)
             {
-                return (false, "Nothing to restore in audio. Apply a sound first so vanilla files are backed up.", null);
+                return (false, "Nothing to restore in audio or Sound SWF. Apply a sound first so vanilla files are backed up.", null);
             }
 
             LoadoutStore.RemoveMusic(soundId);
-            var remaining = LoadoutStore.Load().Music;
+            ApplyProgress.Report(1, total);
+            var done = 1;
             foreach (var entry in remaining)
             {
                 var result = ApplySound(musicWrite.Mp3Folder!, entry.ModId, downloadIfMissing: true, category: null);
@@ -268,6 +315,9 @@ public static class ModApplyService
                 {
                     return (false, result.Error ?? "Could not reapply the other sounds.", null);
                 }
+
+                done++;
+                ApplyProgress.Report(done, total);
             }
 
             var extra = remaining.Count == 0
@@ -297,14 +347,17 @@ public static class ModApplyService
 
         try
         {
-            var restored = VanillaReset.RestoreSwf(blocked.GameRoot!);
+            var remaining = (loadout.Skins ?? []).Where(entry => entry.ModId != skinId).ToList();
+            var total = 1 + remaining.Count;
+            ApplyProgress.Begin("skins", skinId, "reset", total);
+            var restored = VanillaReset.RestoreSwf(blocked.GameRoot!, includeSoundSwf: false);
             if (restored == 0)
             {
                 return (false, "Nothing to restore in SWF. Apply a skin first so vanilla files are backed up.", null);
             }
 
             LoadoutStore.RemoveSkin(skinId);
-            var remaining = LoadoutStore.Load().Skins ?? [];
+            ApplyProgress.Report(1, total);
             if (remaining.Count > 0)
             {
                 try
@@ -324,6 +377,7 @@ public static class ModApplyService
                     return (false, tools.Error ?? "Java or ffdec_lib.jar is missing.", null);
                 }
 
+                var done = 1;
                 foreach (var entry in remaining)
                 {
                     var result = ApplySkin(blocked.GameRoot!, entry.ModId, tools.JavaPath, tools.JarPath, downloadIfMissing: false);
@@ -331,6 +385,9 @@ public static class ModApplyService
                     {
                         return (false, result.Error ?? "Could not reapply the other skins.", null);
                     }
+
+                    done++;
+                    ApplyProgress.Report(done, total);
                 }
             }
 
@@ -594,13 +651,19 @@ public static class ModApplyService
 
         try
         {
-            var count = Mp3Applier.ApplyDownloadFolder(mp3Folder, AppPaths.SoundDownloadsFolder(soundId), category);
-            if (count == 0)
+            var downloadFolder = AppPaths.SoundDownloadsFolder(soundId);
+            var audioCount = Mp3Applier.ApplyDownloadFolder(mp3Folder, downloadFolder, category);
+            var game = BrawlhallaLocator.Resolve();
+            var swf = SoundSwfApplier.ApplyDownloadFolder(
+                game.Found ? game.Path : null,
+                downloadFolder);
+
+            if (audioCount == 0 && swf.Applied == 0)
             {
-                return (false, "This pack has no .bnk / .wem (or .mp3) whose name matches a vanilla file under audio\\pc. Close the game if it is open. Music / Win / Main Theme cannot Apply this way.", null);
+                return (false, SoundApplyMissMessage(swf.FoundInPack), null);
             }
 
-            var reason = "Applied " + count + " audio file(s).";
+            var reason = ApplySoundReason(audioCount, swf.Applied);
             try
             {
                 LoadoutStore.RecordMusicApplied(soundId);
@@ -616,6 +679,31 @@ public static class ModApplyService
         {
             return (false, "Apply failed: " + ex.Message, null);
         }
+    }
+
+    private static string SoundApplyMissMessage(int soundSwfInPack)
+    {
+        if (soundSwfInPack > 0)
+        {
+            return "This pack only replaces Sound.swf / Sound02.swf. Current Brawlhalla no longer has those files, so the game would ignore a copy. These GameBanana UI / weapon / announcer packs cannot Apply.";
+        }
+
+        return "This pack has no .bnk / .wem / .mp3 whose name matches a vanilla file under audio\\pc. Music / Win / Main Theme cannot Apply this way.";
+    }
+
+    private static string ApplySoundReason(int audioCount, int swfCount)
+    {
+        if (audioCount > 0 && swfCount > 0)
+        {
+            return "Applied " + audioCount + " audio file(s) and " + swfCount + " Sound SWF.";
+        }
+
+        if (swfCount > 0)
+        {
+            return "Applied " + swfCount + " Sound SWF.";
+        }
+
+        return "Applied " + audioCount + " audio file(s).";
     }
 
     private static (bool Ok, string? Error, ApplyAttemptDto? Result) ApplySkin(
@@ -708,9 +796,18 @@ public static class ModApplyService
             }
 
             var replaced = 0;
+            var skipped = 0;
+            var spriteTotal = jobs.Sum(job => job.Sprites.Count);
+            var spriteBase = 0;
+            if (ApplyProgress.Matches("skins", skinId, "apply") && spriteTotal > 0)
+            {
+                ApplyProgress.Report(0, spriteTotal);
+            }
+
             foreach (var job in jobs)
             {
                 var outFile = Path.Combine(workRoot, Guid.NewGuid().ToString("N") + "-out.swf");
+                var jobCount = job.Sprites.Count;
                 var javaError = FfdecSkinApplier.ReplaceSprites(
                     javaPath,
                     jarPath,
@@ -719,7 +816,15 @@ public static class ModApplyService
                     outFile,
                     job.Sprites,
                     job.ColorScripts,
-                    out var copied);
+                    out var copied,
+                    onProgress: (done, _) =>
+                    {
+                        if (ApplyProgress.Matches("skins", skinId, "apply") && spriteTotal > 0)
+                        {
+                            ApplyProgress.Report(spriteBase + done, spriteTotal);
+                        }
+                    });
+                spriteBase += jobCount;
                 if (javaError is not null)
                 {
                     RestoreSnapshots(snapshots);
@@ -732,6 +837,7 @@ public static class ModApplyService
                     return (false, "Java did not write a patched SWF.", null);
                 }
 
+                skipped += Math.Max(0, job.Sprites.Count - copied);
                 if (copied == 0)
                 {
                     continue;
@@ -742,6 +848,10 @@ public static class ModApplyService
             }
 
             var reason = "Applied " + replaced + " sprite(s) in " + jobs.Count + " SWF(s).";
+            if (skipped > 0)
+            {
+                reason += " Skipped " + skipped + " missing or mismatched.";
+            }
             try
             {
                 LoadoutStore.RecordSkinApplied(skinId);
@@ -764,6 +874,81 @@ public static class ModApplyService
             SkinBmodLocator.TryDelete(extractRoot);
             SkinBmodLocator.TryDelete(workRoot);
         }
+    }
+
+    private static (int Count, string? Legend, string? Error) DropSameLegendSkins(
+        string gameRoot,
+        int incomingId,
+        string javaPath,
+        string jarPath)
+    {
+        var legend = SkinLegend(incomingId);
+        if (legend is null)
+        {
+            return (0, null, null);
+        }
+
+        var conflicts = (LoadoutStore.Load().Skins ?? [])
+            .Select(entry => entry.ModId)
+            .Where(id => id != incomingId && LegendEquals(SkinLegend(id), legend))
+            .ToList();
+        if (conflicts.Count == 0)
+        {
+            return (0, legend, null);
+        }
+
+        var restored = VanillaReset.RestoreSwf(gameRoot, includeSoundSwf: false);
+        if (restored == 0)
+        {
+            return (0, legend, "Nothing to restore in SWF. Apply a skin first so vanilla files are backed up.");
+        }
+
+        foreach (var id in conflicts)
+        {
+            LoadoutStore.RemoveSkin(id);
+        }
+
+        foreach (var entry in LoadoutStore.Load().Skins ?? [])
+        {
+            if (entry.ModId == incomingId)
+            {
+                continue;
+            }
+
+            var result = ApplySkin(gameRoot, entry.ModId, javaPath, jarPath, downloadIfMissing: false);
+            if (!result.Ok)
+            {
+                return (0, legend, result.Error ?? "Could not reapply the other skins.");
+            }
+        }
+
+        return (conflicts.Count, legend, null);
+    }
+
+    private static string? SkinLegend(int skinId)
+    {
+        var category = CatalogLibrary.TryRead("skins", skinId)?.Category?.Trim();
+        if (string.IsNullOrEmpty(category)
+            || category.Equals("Other/Misc", StringComparison.OrdinalIgnoreCase)
+            || category.Equals(GameBananaIds.SkinsCategoryName, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        foreach (var (_, name) in GameBananaIds.SkinLegends)
+        {
+            if (name.Equals(category, StringComparison.OrdinalIgnoreCase))
+            {
+                return name;
+            }
+        }
+
+        return category;
+    }
+
+    private static bool LegendEquals(string? left, string right)
+    {
+        return left is not null && left.Equals(right, StringComparison.OrdinalIgnoreCase);
     }
 
     private static void RestoreSnapshots(List<(string GameFile, string Snapshot)> snapshots)

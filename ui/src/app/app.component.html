@@ -49,6 +49,131 @@
       </button>
     </div>
 
+    <div class="sidebar-section disk">
+      <p class="section-label">On disk</p>
+      <p class="path" [title]="downloadActivity.folder()">
+        {{ downloadActivity.folder() || 'Looking for mods folder…' }}
+      </p>
+      <p class="path" title="Maps, audio, and skins in the mods folder">
+        {{ downloadActivity.summaryLabel() }}
+      </p>
+      <div class="disk-actions">
+        <button
+          type="button"
+          class="disk-icon"
+          title="Open folder"
+          aria-label="Open folder"
+          (click)="openDownloads()"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l1.8 1.8H18.5A2.5 2.5 0 0 1 21 9.3v7.2A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z"
+            />
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M3 11h18"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="disk-icon"
+          [title]="picking() ? 'Choosing…' : 'Change mods folder'"
+          [attr.aria-label]="picking() ? 'Choosing…' : 'Change mods folder'"
+          (click)="chooseDownloadsFolder()"
+          [disabled]="shellBusy()"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M3 9V6.5A2.5 2.5 0 0 1 5.5 4H9l1.7 1.7h7.8A2.5 2.5 0 0 1 21 8.2V18.5A2.5 2.5 0 0 1 18.5 21h-13A2.5 2.5 0 0 1 3 18.5V16"
+            />
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M3 13h9M9 16l3-3-3-3"
+            />
+          </svg>
+        </button>
+        @if (!downloadActivity.usingDefaultFolder()) {
+          <button
+            type="button"
+            class="disk-icon"
+            title="Use default folder"
+            aria-label="Use default folder"
+            (click)="resetDownloadsFolder()"
+            [disabled]="shellBusy()"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M4 11.5 12 5l8 6.5"
+              />
+              <path
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M6.5 10.8V19h4.2v-4.2h2.6V19h4.2v-8.2"
+              />
+            </svg>
+          </button>
+        }
+      </div>
+      @if (hasSidebarActivity()) {
+        <div class="activity" role="status">
+          @for (item of downloadActivity.active(); track item.kind + ':dl:' + item.id) {
+            <div class="activity-row">
+              <p class="activity-name" [title]="item.fileName">Downloading · {{ item.fileName }}</p>
+              <div class="progress-bar" [class.indeterminate]="item.totalBytes <= 0">
+                <div
+                  class="progress-bar-fill"
+                  [style.width.%]="item.totalBytes > 0 ? (item.bytesDownloaded / item.totalBytes) * 100 : 100"
+                ></div>
+              </div>
+            </div>
+          }
+          @for (item of applyActivity.active(); track item.kind + ':' + item.action + ':' + item.id) {
+            <div class="activity-row">
+              <p class="activity-name" [title]="applyActivity.labelFor(item.kind, item.id, item.action)">
+                {{ applyActivity.labelFor(item.kind, item.id, item.action) }}
+                @if (item.name) {
+                  <span> · {{ item.name }}</span>
+                }
+              </p>
+              <div class="progress-bar" [class.indeterminate]="applyActivity.percentFor(item.kind, item.id) === null">
+                <div
+                  class="progress-bar-fill"
+                  [style.width.%]="applyActivity.percentFor(item.kind, item.id) ?? 100"
+                ></div>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+
     @if (hasLoadout()) {
       <div class="sidebar-section">
         <p class="section-label">Loadout actions</p>
@@ -101,23 +226,6 @@
       <p class="note">{{ note }}</p>
     }
 
-    @if (downloadActivity.active().length > 0) {
-      <div class="sidebar-section activity">
-        <p class="section-label">Downloading</p>
-        @for (item of downloadActivity.active(); track item.kind + ':' + item.id) {
-          <div class="activity-row">
-            <p class="activity-name" [title]="item.fileName">{{ item.fileName }}</p>
-            <div class="progress-bar" [class.indeterminate]="item.totalBytes <= 0">
-              <div
-                class="progress-bar-fill"
-                [style.width.%]="item.totalBytes > 0 ? (item.bytesDownloaded / item.totalBytes) * 100 : 100"
-              ></div>
-            </div>
-          </div>
-        }
-      </div>
-    }
-
     <div class="sidebar-section">
       <p class="section-label">Appearance</p>
       <div class="theme-row">
@@ -135,6 +243,33 @@
       </div>
     </div>
 
+    <div class="sidebar-section">
+      <p class="section-label">Contact</p>
+      <button type="button" class="link contact-link" (click)="openSource()">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"
+          />
+        </svg>
+        Source
+      </button>
+      <button
+        type="button"
+        class="link contact-link"
+        [title]="'Copy Discord username ' + discordUser"
+        (click)="copyDiscord()"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M19.27 5.33C17.94 4.71 16.5 4.26 15 4a.1.1 0 0 0-.07.03c-.18.33-.39.76-.53 1.09a16.1 16.1 0 0 0-4.8 0c-.14-.34-.35-.76-.54-1.09A.1.1 0 0 0 9 4c-1.5.26-2.94.71-4.27 1.33a.07.07 0 0 0-.03.03C2.11 9.37 1.5 13.32 1.82 17.22a.1.1 0 0 0 .03.07 16.3 16.3 0 0 0 4.9 2.47.1.1 0 0 0 .11-.04c.38-.52.72-1.07 1.01-1.65a.1.1 0 0 0-.05-.13 10.7 10.7 0 0 1-1.54-.73.1.1 0 0 1 0-.16c.1-.08.21-.16.31-.24a.1.1 0 0 1 .1 0c3.24 1.48 6.75 1.48 9.95 0a.1.1 0 0 1 .1 0c.1.08.21.16.32.24a.1.1 0 0 1 0 .16 10.2 10.2 0 0 1-1.55.73.1.1 0 0 0-.05.14c.3.58.64 1.13 1.01 1.64a.1.1 0 0 0 .11.04 16.2 16.2 0 0 0 4.92-2.47.1.1 0 0 0 .03-.07c.38-4.53-.64-8.44-2.72-11.86a.06.06 0 0 0-.03-.03zM8.52 14.85c-.97 0-1.77-.9-1.77-2s.79-2 1.77-2 1.78.9 1.77 2-.79 2-1.77 2zm6.97 0c-.97 0-1.77-.9-1.77-2s.79-2 1.77-2 1.78.9 1.77 2-.79 2-1.77 2z"
+          />
+        </svg>
+        {{ discordCopied() ? 'Copied' : discordUser }}
+      </button>
+    </div>
+
     <div class="status-footer">
       <div class="status-row">
         <span class="status-dot" [class.ok]="hostConnected() === true" [class.bad]="hostConnected() === false"></span>
@@ -144,6 +279,12 @@
         Maps, sounds, and skins powered by
         <button type="button" class="link" (click)="openGameBanana()">GameBanana</button>
       </p>
+      @if (madeBy(); as name) {
+        <p class="credit">Made by {{ name }}</p>
+      }
+      @if (appVersion(); as version) {
+        <p class="credit">v{{ version }}</p>
+      }
     </div>
   </aside>
 
@@ -151,14 +292,14 @@
     <div class="tab-page" style="--page-accent: var(--accent-maps)" [hidden]="activeTabId() !== 'maps'">
       <app-maps-page />
     </div>
-    @if (visitedTabIds().has('musics')) {
-      <div class="tab-page" style="--page-accent: var(--accent-music)" [hidden]="activeTabId() !== 'musics'">
-        <app-musics-page />
-      </div>
-    }
     @if (visitedTabIds().has('skins')) {
       <div class="tab-page" style="--page-accent: var(--accent-skins)" [hidden]="activeTabId() !== 'skins'">
         <app-skins-page />
+      </div>
+    }
+    @if (visitedTabIds().has('musics')) {
+      <div class="tab-page" style="--page-accent: var(--accent-music)" [hidden]="activeTabId() !== 'musics'">
+        <app-musics-page />
       </div>
     }
   </main>
@@ -174,23 +315,30 @@
       (click)="$event.stopPropagation()"
     >
       <h2 id="reset-all-title">Reset all</h2>
-      <p class="hint">
-        Restore vanilla map art and audio from backups, and clear the current loadout.
-      </p>
-      <label class="check-row">
-        <input
-          type="checkbox"
-          [checked]="resetDeleteDownloads()"
-          (change)="setResetDeleteDownloads($event)"
-        />
-        Also delete all downloaded files (maps, audio, skins). Vanilla backups stay.
-      </label>
-      <div class="sheet-actions">
-        <button type="button" class="danger" (click)="confirmResetAll()" [disabled]="shellBusy()">
-          Reset all
-        </button>
-        <button type="button" (click)="closeResetDialog()">Cancel</button>
-      </div>
+      @if (resetRunning()) {
+        <div class="catalog-loader" role="status" aria-live="polite">
+          <span class="catalog-loader-spin" aria-hidden="true"></span>
+          <p>{{ resetWait }}</p>
+        </div>
+      } @else {
+        <p class="hint">
+          Restore vanilla map art, audio, and skins from backups, and clear the current loadout.
+        </p>
+        <label class="check-row">
+          <input
+            type="checkbox"
+            [checked]="resetDeleteDownloads()"
+            (change)="setResetDeleteDownloads($event)"
+          />
+          Also delete all downloaded files (maps, audio, skins). Vanilla backups stay.
+        </label>
+        <div class="sheet-actions">
+          <button type="button" class="danger" (click)="confirmResetAll()" [disabled]="shellBusy()">
+            Reset all
+          </button>
+          <button type="button" (click)="closeResetDialog()">Cancel</button>
+        </div>
+      }
     </div>
   </div>
 }

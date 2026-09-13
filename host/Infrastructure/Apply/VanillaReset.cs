@@ -35,7 +35,56 @@ public static class VanillaReset
 
     public static int RestoreAll(string gameRoot)
     {
-        return RestoreMapArt(gameRoot) + RestoreMp3();
+        return RestoreMapArt(gameRoot) + RestoreMp3() + RestoreSwf(gameRoot);
+    }
+
+    public static int RestoreSoundSwf(string gameRoot)
+    {
+        return RestoreSwf(gameRoot, includeSoundSwf: true, soundSwfOnly: true);
+    }
+
+    public static int RestoreSwf(string gameRoot, bool includeSoundSwf = true)
+    {
+        return RestoreSwf(gameRoot, includeSoundSwf, soundSwfOnly: false);
+    }
+
+    private static int RestoreSwf(string gameRoot, bool includeSoundSwf, bool soundSwfOnly)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(gameRoot);
+
+        var backupRoot = Path.GetFullPath(Path.Combine(AppPaths.BackupsRoot, VanillaBackup.SwfBackupFolder));
+        if (!Directory.Exists(backupRoot))
+        {
+            return 0;
+        }
+
+        var restored = 0;
+        foreach (var backupFile in Directory.EnumerateFiles(backupRoot, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(backupRoot, backupFile);
+            var isSound = SoundSwfApplier.IsSoundSwfName(Path.GetFileName(relative));
+            if (soundSwfOnly && !isSound)
+            {
+                continue;
+            }
+
+            if (!includeSoundSwf && isSound)
+            {
+                continue;
+            }
+
+            var (gameFile, _) = VanillaBackup.SwfPaths(gameRoot, relative);
+            var destDir = Path.GetDirectoryName(gameFile);
+            if (!string.IsNullOrEmpty(destDir))
+            {
+                Directory.CreateDirectory(destDir);
+            }
+
+            File.Copy(backupFile, gameFile, overwrite: true);
+            restored++;
+        }
+
+        return restored;
     }
 
     private static int RestoreSubfolder(string gameRoot, string gameSubfolder)

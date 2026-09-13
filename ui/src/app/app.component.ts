@@ -7,14 +7,16 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { AppInfo } from './core/ipc/contracts/app-info.contracts';
 import { ApplyGuard, GameLocation } from './core/ipc/contracts/game.contracts';
 import { IPC_MESSAGE } from './core/ipc/ipc.constants';
 import { IpcService } from './core/ipc/ipc.service';
 import { LoadoutService } from './core/loadout/loadout.service';
 import { APP_TABS, AppTabId } from './core/navigation/app-tabs.config';
-import { APP_SHELL_TEXT, GAMEBANANA_GAME_URL } from './core/ui/app-shell.constants';
+import { APP_SHELL_TEXT, CONTACT_DISCORD, GAMEBANANA_GAME_URL, RESET_WAIT, SOURCE_REPO_URL } from './core/ui/app-shell.constants';
 import { BrowserService } from './core/browser/browser.service';
 import { GameLocationState } from './core/game/game-location.state';
+import { ApplyActivityService } from './core/apply/apply-activity.service';
 import { DownloadActivityService } from './core/download/download-activity.service';
 import { THEME_PRESETS, ThemeName, ThemeService } from './core/theme/theme.service';
 import { MapsPageComponent } from './features/maps/maps-page.component';
@@ -34,9 +36,11 @@ export class AppComponent implements OnDestroy {
   private readonly browser = inject(BrowserService);
   private readonly gameLocation = inject(GameLocationState);
   readonly downloadActivity = inject(DownloadActivityService);
+  readonly applyActivity = inject(ApplyActivityService);
   readonly theme = inject(ThemeService);
   readonly themeNames = Object.keys(THEME_PRESETS) as ThemeName[];
   private runningTimer: ReturnType<typeof setInterval> | undefined;
+  private discordTimer: ReturnType<typeof setTimeout> | undefined;
 
   readonly tabs = APP_TABS;
   readonly activeTabId = signal<AppTabId>(APP_TABS[0].id);
@@ -47,20 +51,29 @@ export class AppComponent implements OnDestroy {
   readonly gameFound = signal(false);
   readonly mp3Path = signal<string>('Looking for mp3…');
   readonly hasMp3 = signal(false);
-  readonly runningMessage = signal<string | null>(null);
+  readonly runningMessage = this.gameLocation.runningMessage;
   readonly picking = signal(false);
   readonly actionBusy = signal(false);
   readonly actionMessage = signal<string | null>(null);
+  readonly madeBy = signal<string | null>(null);
+  readonly appVersion = signal<string | null>(null);
+  readonly discordCopied = signal(false);
+  readonly discordUser = CONTACT_DISCORD;
   readonly resetDialogOpen = signal(false);
   readonly resetDeleteDownloads = signal(false);
+  readonly resetRunning = signal(false);
+  readonly resetWait = RESET_WAIT;
   readonly configName = signal('');
   readonly configs = this.loadout.configs;
   readonly shellBusy = computed(
-    () => this.picking() || this.actionBusy() || this.loadout.busy(),
+    () => this.picking() || this.actionBusy() || this.loadout.busy() || this.resetRunning(),
+  );
+  readonly hasSidebarActivity = computed(
+    () => this.downloadActivity.active().length > 0 || this.applyActivity.active().length > 0,
   );
   readonly hasLoadout = computed(() => {
     const current = this.loadout.loadout();
-    return current.maps.length > 0 || current.music.length > 0;
+    return current.maps.length > 0 || current.music.length > 0 || current.skins.length > 0;
   });
 
   constructor() {
@@ -69,6 +82,9 @@ export class AppComponent implements OnDestroy {
       this.hostStatus.set(
         reply.ok ? 'Host connected' : (reply.error ?? 'Host unavailable'),
       );
+      const info = reply.payload as AppInfo | undefined;
+      this.madeBy.set(info?.madeBy?.trim() || null);
+      this.appVersion.set(info?.version?.trim() || null);
     });
     this.refreshGame();
     this.refreshRunning();
@@ -79,11 +95,21 @@ export class AppComponent implements OnDestroy {
     if (this.runningTimer !== undefined) {
       clearInterval(this.runningTimer);
     }
+    if (this.discordTimer !== undefined) {
+      clearTimeout(this.discordTimer);
+    }
+  }
+
+  @HostListener('document:visibilitychange')
+  onVisibility(): void {
+    if (!document.hidden) {
+      this.refreshRunning();
+    }
   }
 
   @HostListener('document:keydown.escape')
   onEscape(): void {
-    if (this.resetDialogOpen()) {
+    if (this.resetDialogOpen() && !this.resetRunning()) {
       this.closeResetDialog();
     }
   }
@@ -129,20 +155,35 @@ export class AppComponent implements OnDestroy {
   }
 
   closeResetDialog(): void {
+    if (this.resetRunning()) {
+      return;
+    }
     this.resetDialogOpen.set(false);
   }
 
   confirmResetAll(): void {
+    if (this.shellBusy() || this.resetRunning()) {
+      return;
+    }
+
     const deleteDownloads = this.resetDeleteDownloads();
-    this.resetDialogOpen.set(false);
-    this.runLoadoutAction(() =>
-      this.loadout.resetAll(deleteDownloads).then((result) => {
+    this.resetRunning.set(true);
+    this.actionMessage.set(null);
+    this.loadout
+      .resetAll(deleteDownloads)
+      .then((result) => {
         if (deleteDownloads && result.ok) {
           this.downloadActivity.notifyInventoryChanged();
         }
-        return result;
-      }),
-    );
+        this.actionMessage.set(result.message);
+      })
+      .catch((error: unknown) => {
+        this.actionMessage.set(error instanceof Error ? error.message : 'Request failed.');
+      })
+      .finally(() => {
+        this.resetRunning.set(false);
+        this.resetDialogOpen.set(false);
+      });
   }
 
   setResetDeleteDownloads(event: Event): void {
@@ -185,6 +226,43 @@ export class AppComponent implements OnDestroy {
     this.browser.open(GAMEBANANA_GAME_URL);
   }
 
+  openSource(): void {
+    this.browser.open(SOURCE_REPO_URL);
+  }
+
+  copyDiscord(): void {
+    void navigator.clipboard.writeText(CONTACT_DISCORD).then(() => {
+      this.discordCopied.set(true);
+      if (this.discordTimer !== undefined) {
+        clearTimeout(this.discordTimer);
+      }
+      this.discordTimer = setTimeout(() => this.discordCopied.set(false), 1500);
+    });
+  }
+
+  openDownloads(): void {
+    this.browser.openDownloads('maps');
+  }
+
+  chooseDownloadsFolder(): void {
+    this.picking.set(true);
+    this.browser.pickDownloadsFolder().finally(() => {
+      this.picking.set(false);
+      this.downloadActivity.notifyInventoryChanged();
+    });
+  }
+
+  resetDownloadsFolder(): void {
+    if (this.shellBusy() || this.downloadActivity.usingDefaultFolder()) {
+      return;
+    }
+    this.picking.set(true);
+    this.browser.resetDownloadsFolder().finally(() => {
+      this.picking.set(false);
+      this.downloadActivity.notifyInventoryChanged();
+    });
+  }
+
   private runLoadoutAction(action: () => Promise<{ ok: boolean; message: string }>): void {
     if (this.shellBusy()) {
       return;
@@ -211,9 +289,12 @@ export class AppComponent implements OnDestroy {
   }
 
   private refreshRunning(): void {
+    if (document.hidden) {
+      return;
+    }
     this.ipc.request(IPC_MESSAGE.GAME_RUNNING).then((reply) => {
       const status = reply.payload as ApplyGuard | undefined;
-      this.runningMessage.set(
+      this.gameLocation.runningMessage.set(
         status?.running ? (status.message ?? 'Close Brawlhalla first.') : null,
       );
     });

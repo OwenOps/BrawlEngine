@@ -59,15 +59,32 @@
     <h1>Audio</h1>
     <p class="hint">
       GameBanana Sounds. Apply copies matching vanilla names under <code>audio\pc</code>
-      (including <code>English(US)</code>): Announcer, weapons, UI, Podium, Dubs, Signature, Voicelines, Other.
-      Chips only filter the list. Music / Win Theme / Main Theme cannot Apply (not a random MP3 / bank swap).
+      (including <code>English(US)</code>). Old <code>Sound.swf</code> / <code>Sound02.swf</code> packs
+      (many UI / Weapon / announcer mods) cannot Apply — current Brawlhalla dropped those files.
+      Chips only filter the list. Music / Win Theme / Main Theme cannot Apply.
     </p>
-    <button type="button" class="link" (click)="openDownloadsFolder()">
-      Open downloads folder
-    </button>
+    <div class="head-actions">
+      <button type="button" class="link" (click)="openDownloadsFolder()">
+        Open downloads folder
+      </button>
+      <button type="button" class="link" (click)="openAddZip()" [disabled]="isBusy()">
+        Add zip…
+      </button>
+      <button type="button" class="link" (click)="openAddUrl()" [disabled]="isBusy()">
+        Add from URL…
+      </button>
+      <button
+        type="button"
+        class="link"
+        (click)="openApplySelected()"
+        [disabled]="diskCount() === 0 || isBusy()"
+      >
+        Apply selected…
+      </button>
+    </div>
   </div>
   @if (isLibrary()) {
-    <p class="count">{{ shownItems().length }} {{ libraryFilter() === 'disk' ? 'on disk' : 'applied' }}</p>
+    <p class="count">{{ shownItems().length }} {{ libraryStatusLabel(libraryFilter()) }}</p>
   } @else if (totalCount() > 0) {
     <p class="count">{{ totalCount() }} sounds</p>
   }
@@ -89,6 +106,12 @@
       }
     </select>
   </label>
+  @if (!isLibrary()) {
+    <label class="nsfw-toggle">
+      <input type="checkbox" [checked]="nsfw.show()" (change)="nsfw.setFromCheckbox($event)" />
+      Show NSFW
+    </label>
+  }
 </div>
 
 <div class="filter-bar">
@@ -105,7 +128,22 @@
         {{ option.label }}
       </button>
     }
+    @if (authorFilter(); as author) {
+      <button
+        type="button"
+        class="chip active"
+        [attr.aria-label]="'Clear author filter ' + author.name"
+        (click)="clearAuthor()"
+      >
+        By {{ author.name }} ×
+      </button>
+    }
   </div>
+  @if (showBackToPage()) {
+    <button type="button" class="link" (click)="backToLastPage()" [disabled]="loading()">
+      Back to page {{ lastPage() }}
+    </button>
+  }
 </div>
 
 <div class="filter-bar">
@@ -143,14 +181,18 @@
 @if (loading() && shownItems().length === 0) {
   <div class="catalog-loader" role="status" aria-live="polite">
     <span class="catalog-loader-spin" aria-hidden="true"></span>
-    <p>Loading sounds…</p>
+    <p>{{ isLibrary() ? libraryWait : gameBananaWait }}</p>
   </div>
 } @else if (!loading() && shownItems().length === 0 && !error()) {
   <div class="empty-state">
     @if (libraryFilter() === 'disk') {
-      <p class="hint">Nothing on disk yet. Download a sound first.</p>
+      <p class="hint">Nothing on disk yet. Download from the catalog, or drop a zip into a folder named with the GameBanana id, or Add from disk.</p>
     } @else if (libraryFilter() === 'applied') {
       <p class="hint">No sounds in the current loadout.</p>
+    } @else if (libraryFilter() === 'notApplied') {
+      <p class="hint">Every sound on disk is already applied.</p>
+    } @else if (libraryFilter() === 'liked') {
+      <p class="hint">No liked sounds yet. Heart a row to save it here.</p>
     } @else {
       <p class="hint">No sounds found for this filter.</p>
     }
@@ -158,26 +200,59 @@
 }
 
 <div class="catalog-panel">
-  @if (loading() && shownItems().length > 0) {
-    <div class="catalog-loader overlay" role="status">
+  @if (catalogBusy(); as wait) {
+    <div class="catalog-loader overlay" role="status" aria-live="polite">
       <span class="catalog-loader-spin" aria-hidden="true"></span>
-      <p>Loading sounds…</p>
+      <p>{{ wait }}</p>
     </div>
   }
-  <div class="sound-list" [class.is-loading]="loading() && shownItems().length > 0">
+  <div class="sound-list" [class.is-loading]="catalogBusy()">
   @for (item of shownItems(); track item.id) {
-    <article class="sound-row" [class.is-downloading]="isDownloading(item.id)">
+    <article class="sound-row" [class.is-downloading]="isDownloading(item.id) || applyActivity.isActive('sounds', item.id)">
+      <div class="sound-thumb" [class.is-nsfw-blur]="item.nsfw && !nsfw.show()">
+        @if (item.thumbnailUrl) {
+          <img
+            [src]="item.thumbnailUrl | thumbSrc"
+            [alt]="item.nsfw && !nsfw.show() ? 'NSFW thumbnail hidden' : item.name"
+            loading="lazy"
+            decoding="async"
+          />
+        } @else {
+          <span>{{ initial(item.name) }}</span>
+        }
+        @if (applyActivity.isActive('sounds', item.id) || applyingId() === item.id || resettingId() === item.id) {
+          <div class="thumb-work" role="status">
+            <span class="catalog-loader-spin" aria-hidden="true"></span>
+            <p>{{ applyActivity.labelFor('sounds', item.id, resettingId() === item.id ? 'reset' : 'apply') }}</p>
+          </div>
+        }
+      </div>
       <div class="sound-main">
         <p class="sound-name">{{ item.name }}</p>
-        <p class="author">{{ item.author }} · {{ item.category }}</p>
+        <app-author-credit
+          [item]="item"
+          [showCategory]="true"
+          (profile)="openProfile($event)"
+          (more)="moreFromAuthor($event)"
+        />
         @if (isActive(item.id)) {
           <span class="badge">Active</span>
-        } @else if (isDownloaded(item.id)) {
+        }         @else if (isDownloaded(item.id)) {
           <span class="badge downloaded">Downloaded</span>
+        }
+        @if (item.nsfw) {
+          <span class="badge nsfw">NSFW</span>
+        }
+        @if (isCrashTagged(item.id)) {
+          <span class="badge crash" [title]="crashNote(item.id) ?? 'Crashes'">Crashes</span>
         }
         @if (isDownloading(item.id)) {
           <div class="progress-bar" [class.indeterminate]="downloadActivity.percentFor('sounds', item.id) === null">
             <div class="progress-bar-fill" [style.width.%]="downloadActivity.percentFor('sounds', item.id) ?? 100"></div>
+          </div>
+        } @else if (applyActivity.isActive('sounds', item.id) || applyingId() === item.id || resettingId() === item.id) {
+          <div class="progress-bar" [class.indeterminate]="applyActivity.percentFor('sounds', item.id) === null">
+            <div class="progress-bar-fill" [style.width.%]="applyActivity.percentFor('sounds', item.id) ?? 100"></div>
           </div>
         }
         @if (diskSize(item.id); as size) {
@@ -211,7 +286,7 @@
           >
             {{
               applyingId() === item.id
-                ? 'Applying…'
+                ? applyActivity.labelFor('sounds', item.id)
                 : isActive(item.id)
                   ? 'Re-apply'
                   : 'Apply'
@@ -220,7 +295,7 @@
           <div class="actions-row">
             @if (isActive(item.id)) {
               <button type="button" class="danger" (click)="reset(item)" [disabled]="isBusy()">
-                {{ resettingId() === item.id ? 'Resetting…' : 'Reset' }}
+                {{ resettingId() === item.id ? applyActivity.labelFor('sounds', item.id, 'reset') : 'Reset' }}
               </button>
             }
             <button type="button" (click)="openFolder(item)">Open folder</button>
@@ -228,7 +303,7 @@
               type="button"
               class="icon-btn danger"
             aria-label="Delete downloaded files"
-              [title]="diskSize(item.id) ? 'Delete downloaded files (' + diskSize(item.id) + ')' : 'Delete downloaded files'"
+              [title]="diskSize(item.id) ? 'Delete from disk (' + diskSize(item.id) + '). If applied, you can also Reset.' : 'Delete downloaded files'"
               (click)="deleteDownload(item.id)"
               [disabled]="isBusy()"
             >
@@ -236,6 +311,28 @@
             </button>
           </div>
         }
+        <button
+          type="button"
+          class="icon-btn thumb-like"
+          [class.is-liked]="isLiked(item.id)"
+          [attr.aria-pressed]="isLiked(item.id)"
+          [attr.aria-label]="isLiked(item.id) ? 'Unlike ' + item.name : 'Like ' + item.name"
+          [title]="isLiked(item.id) ? 'Unlike' : 'Like'"
+          (click)="toggleLike(item, $event)"
+        >
+          {{ isLiked(item.id) ? '♥' : '♡' }}
+        </button>
+        <button
+          type="button"
+          class="icon-btn thumb-crash"
+          [class.is-crash]="isCrashTagged(item.id)"
+          [attr.aria-pressed]="isCrashTagged(item.id)"
+          [attr.aria-label]="isCrashTagged(item.id) ? 'Clear crashes tag on ' + item.name : 'Mark ' + item.name + ' as crashes'"
+          [title]="isCrashTagged(item.id) ? (crashNote(item.id) ?? 'Clear crashes tag') : 'Mark as crashes'"
+          (click)="toggleCrash(item, $event)"
+        >
+          ⚠
+        </button>
         <button type="button" class="icon-btn" title="Info" [attr.aria-label]="'Info for ' + item.name" (click)="openInfo(item)">
           ℹ
         </button>
@@ -250,7 +347,21 @@
     <button type="button" (click)="goToPage(page() - 1)" [disabled]="loading() || page() <= 1">
       ‹ Prev
     </button>
-    <span>Page {{ page() }} of {{ totalPages() }}</span>
+    <label class="pager-jump">
+      Page
+      <input
+        type="number"
+        inputmode="numeric"
+        min="1"
+        [max]="totalPages()"
+        [value]="page()"
+        [disabled]="loading()"
+        aria-label="Go to page"
+        (change)="jumpToPage($event)"
+        (keydown.enter)="jumpToPage($event)"
+      />
+      of {{ totalPages() }}
+    </label>
     <button type="button" (click)="goToPage(page() + 1)" [disabled]="loading() || page() >= totalPages()">
       Next ›
     </button>
@@ -261,8 +372,13 @@
   <div class="overlay" (click)="closeInfo()">
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sound-info-title" (click)="$event.stopPropagation()">
       <h2 id="sound-info-title">{{ item.name }}</h2>
-      <p class="hint">{{ item.author }} · {{ item.category }}</p>
-      <p class="hint">Sounds on this tab come from GameBanana. Apply copies matching .bnk / .wem names. Music / Win / Main Theme cannot Apply.</p>
+      <app-author-credit
+        [item]="item"
+        [showCategory]="true"
+        (profile)="openProfile($event)"
+        (more)="moreFromAuthor($event)"
+      />
+      <p class="hint">Sounds on this tab come from GameBanana. Apply copies matching .bnk / .wem names. Old Sound.swf packs cannot Apply on current Brawlhalla. Music / Win / Main Theme cannot Apply.</p>
       <div class="sheet-actions">
         <button type="button" class="primary" (click)="openProfile(item.profileUrl)">
           View on GameBanana
@@ -272,3 +388,21 @@
     </div>
   </div>
 }
+
+<app-apply-selected-dialog
+  [open]="applySelectedOpen()"
+  heading="Apply selected sounds"
+  [rows]="applySelectedRows()"
+  [applying]="applySelectedRunning()"
+  [status]="applySelectedStatus()"
+  (apply)="runApplySelected($event)"
+  (closed)="closeApplySelected()"
+/>
+
+<app-add-mod-dialog
+  [open]="addOpen()"
+  [mode]="addMode()"
+  kind="sounds"
+  (picked)="confirmAdd($event)"
+  (closed)="closeAdd()"
+/>
