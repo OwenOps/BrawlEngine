@@ -2,9 +2,9 @@
 .cursor/
 .cursorignore
 AGENTS.md
-ROADMAP.md
-ROADMAP2.md
-ROADMAP3.md
+
+# Project
+RoadMaps/
 
 # Host
 host/bin/
@@ -22,3 +22,6 @@ ui/.vscode/
 
 #Other
 Stack.md
+
+# FFDec library (place next to the host exe; do not commit)
+**/ffdec_lib.jar
