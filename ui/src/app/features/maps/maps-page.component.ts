@@ -9,10 +9,20 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { LIBRARY_FILTERS, LibraryFilter } from '../../core/catalog/library-filter';
+import { LIBRARY_FILTERS, LibraryFilter, libraryFollowsLoadout, libraryIds, libraryStatusLabel, parseCatalogPage, pinLibraryCards, showBackToPage as catalogShowBackToPage } from '../../core/catalog/library-filter';
+import { NewDownloadsService } from '../../core/catalog/new-downloads.service';
+import { ApplySelectedDialogComponent } from '../../core/catalog/apply-selected-dialog.component';
+import { AddModDialogComponent } from '../../core/catalog/add-mod-dialog.component';
+import { AuthorCreditComponent } from '../../core/catalog/author-credit.component';
+import { AuthorFilter, matchesAuthor } from '../../core/catalog/author-filter';
+import { AddModMode } from '../../core/catalog/gamebanana-id';
+import { ApplySelectedRow, applySelectedDone, applySelectedRows } from '../../core/catalog/apply-selected';
+import { NsfwSettings } from '../../core/catalog/nsfw-settings';
+import { ThumbSrcPipe } from '../../core/catalog/thumb-src.pipe';
 import { scrollMainToTop } from '../../core/ui/scroll-main';
 import { BrowserService } from '../../core/browser/browser.service';
 import { formatBytes, confirmDeleteDownload } from '../../core/download/format-bytes';
+import { ApplyActivityService } from '../../core/apply/apply-activity.service';
 import { DownloadActivityService } from '../../core/download/download-activity.service';
 import { ApplyAttempt } from '../../core/ipc/contracts/apply.contracts';
 import {
@@ -25,11 +35,14 @@ import { LocalDownloadList, MapNamesResult } from '../../core/ipc/contracts/down
 import { IPC_MESSAGE } from '../../core/ipc/ipc.constants';
 import { IpcService } from '../../core/ipc/ipc.service';
 import { LoadoutService } from '../../core/loadout/loadout.service';
-import { GAMEBANANA_WAIT } from '../../core/ui/app-shell.constants';
+import { LikesService } from '../../core/likes/likes.service';
+import { CrashesService } from '../../core/crashes/crashes.service';
+import { GAMEBANANA_WAIT, LIBRARY_WAIT } from '../../core/ui/app-shell.constants';
 
 @Component({
   selector: 'app-maps-page',
   standalone: true,
+  imports: [ThumbSrcPipe, ApplySelectedDialogComponent, AddModDialogComponent, AuthorCreditComponent],
   templateUrl: './maps-page.component.html',
   styleUrl: './maps-page.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -37,15 +50,23 @@ import { GAMEBANANA_WAIT } from '../../core/ui/app-shell.constants';
 export class MapsPageComponent implements OnDestroy {
   private readonly ipc = inject(IpcService);
   private readonly loadout = inject(LoadoutService);
+  private readonly likes = inject(LikesService);
+  private readonly crashes = inject(CrashesService);
+  readonly nsfw = inject(NsfwSettings);
   private readonly browser = inject(BrowserService);
   readonly downloadActivity = inject(DownloadActivityService);
+  readonly applyActivity = inject(ApplyActivityService);
+  readonly newDownloads = inject(NewDownloadsService);
   readonly gameBananaWait = GAMEBANANA_WAIT;
+  readonly libraryWait = LIBRARY_WAIT;
   private searchTimer: ReturnType<typeof setTimeout> | undefined;
   private loadToken = 0;
 
   readonly sorts = CATALOG_SORTS;
   readonly libraryFilters = LIBRARY_FILTERS;
+  readonly libraryStatusLabel = libraryStatusLabel;
   readonly libraryFilter = signal<LibraryFilter>('disk');
+  readonly authorFilter = signal<AuthorFilter | null>(null);
   readonly queryInput = signal('');
   readonly query = signal('');
   readonly sort = signal<CatalogSort>('newest');
@@ -53,18 +74,27 @@ export class MapsPageComponent implements OnDestroy {
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
   readonly page = signal(1);
+  readonly lastPage = signal(1);
   readonly totalPages = signal(1);
   readonly totalCount = signal(0);
   readonly downloadingIds = signal<ReadonlySet<number>>(new Set());
   readonly applyingId = signal<number | null>(null);
   readonly resettingId = signal<number | null>(null);
   readonly deletingId = signal<number | null>(null);
+  readonly importing = signal(false);
   readonly cardNote = signal<Record<number, string>>({});
   readonly infoItem = signal<CatalogItem | null>(null);
   readonly infoMapNames = signal<string[] | null>(null);
   readonly infoMapNamesLoading = signal(false);
+  readonly applySelectedOpen = signal(false);
+  readonly applySelectedRows = signal<ApplySelectedRow[]>([]);
+  readonly applySelectedStatus = signal<string | null>(null);
+  readonly applySelectedRunning = signal(false);
+  readonly addOpen = signal(false);
+  readonly addMode = signal<AddModMode>('zip');
   private readonly downloadedIds = signal<ReadonlySet<number>>(new Set());
   private readonly folders = signal<Record<number, string>>({});
+  private readonly downloadedAt = signal<Record<number, string>>({});
   private readonly mapCounts = signal<Record<number, number | null>>({});
   private readonly sizeBytes = signal<Record<number, number>>({});
   readonly isBusy = computed(
@@ -72,19 +102,38 @@ export class MapsPageComponent implements OnDestroy {
       this.applyingId() !== null ||
       this.resettingId() !== null ||
       this.deletingId() !== null ||
+      this.importing() ||
+      this.applySelectedRunning() ||
       this.loadout.busy(),
   );
+  readonly catalogBusy = computed(() => {
+    if (this.loading() && this.shownItems().length > 0 && !this.isLibrary()) {
+      return this.gameBananaWait;
+    }
+    return null;
+  });
   readonly isLibrary = computed(() => this.libraryFilter() !== 'all');
+  readonly diskCount = computed(() => this.downloadedIds().size);
+  readonly showBackToPage = computed(() =>
+    catalogShowBackToPage(this.lastPage(), this.page(), this.isLibrary()),
+  );
   readonly shownItems = computed(() => {
-    const list = this.items();
+    let list = this.items();
+    if (!this.isLibrary() && !this.nsfw.show()) {
+      list = list.filter((item) => !item.nsfw);
+    }
+    const author = this.authorFilter();
+    if (author) {
+      list = list.filter((item) => matchesAuthor(item, author));
+    }
     if (!this.isLibrary()) {
-      return list;
+      return pinLibraryCards(list, this.likes.mapIds(), (id) => this.isNew(id));
     }
     const query = this.queryInput().trim().toLowerCase();
-    if (!query) {
-      return list;
+    if (query) {
+      list = list.filter((item) => item.name.toLowerCase().includes(query));
     }
-    return list.filter((item) => item.name.toLowerCase().includes(query));
+    return pinLibraryCards(list, this.likes.mapIds(), (id) => this.isNew(id));
   });
 
   constructor() {
@@ -111,6 +160,45 @@ export class MapsPageComponent implements OnDestroy {
 
   isDownloaded(modId: number): boolean {
     return this.downloadedIds().has(modId) || this.isActive(modId);
+  }
+
+  isNew(modId: number): boolean {
+    return this.newDownloads.isNew('maps', modId, this.downloadedAt()[modId]);
+  }
+
+  isLiked(modId: number): boolean {
+    return this.likes.has('maps', modId);
+  }
+
+  toggleLike(mod: CatalogItem, event: Event): void {
+    event.stopPropagation();
+    const reload = this.libraryFilter() === 'liked';
+    this.likes.toggle('maps', mod).then(() => {
+      if (reload) {
+        this.loadLibrary();
+      }
+    });
+  }
+
+  isCrashTagged(modId: number): boolean {
+    return this.crashes.has('maps', modId);
+  }
+
+  crashNote(modId: number): string | null {
+    return this.crashes.note('maps', modId);
+  }
+
+  toggleCrash(mod: CatalogItem, event: Event): void {
+    event.stopPropagation();
+    if (this.crashes.has('maps', mod.id)) {
+      void this.crashes.toggle('maps', mod.id);
+      return;
+    }
+    const note = this.crashes.askNote();
+    if (note === undefined) {
+      return;
+    }
+    void this.crashes.toggle('maps', mod.id, note);
   }
 
   downloadPercent(modId: number): number | null {
@@ -175,12 +263,49 @@ export class MapsPageComponent implements OnDestroy {
     if (this.libraryFilter() === id) {
       return;
     }
+    this.leaveOnDisk();
     this.libraryFilter.set(id);
     if (id === 'all') {
-      this.load(1);
+      this.load(1, false);
       return;
     }
     this.loadLibrary();
+  }
+
+  moreFromAuthor(item: CatalogItem): void {
+    if (!item.authorId && !item.author) {
+      return;
+    }
+
+    this.closeInfo();
+    this.authorFilter.set({ id: item.authorId ?? 0, name: item.author });
+    this.queryInput.set('');
+    this.query.set('');
+    if (item.authorId) {
+      this.leaveOnDisk();
+      this.libraryFilter.set('all');
+      this.load(1);
+    }
+  }
+
+  clearAuthor(): void {
+    if (!this.authorFilter()) {
+      return;
+    }
+    this.authorFilter.set(null);
+    if (!this.isLibrary()) {
+      this.load(1);
+    }
+  }
+
+  backToLastPage(): void {
+    const last = this.lastPage();
+    if (this.loading() || last <= 1) {
+      return;
+    }
+    this.libraryFilter.set('all');
+    this.load(last);
+    scrollMainToTop();
   }
 
   goToPage(page: number): void {
@@ -189,6 +314,18 @@ export class MapsPageComponent implements OnDestroy {
     }
     this.load(page);
     scrollMainToTop();
+  }
+
+  jumpToPage(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const next = parseCatalogPage(input.value, this.totalPages());
+    if (next === null) {
+      input.value = String(this.page());
+      return;
+    }
+
+    input.value = String(next);
+    this.goToPage(next);
   }
 
   retry(): void {
@@ -228,12 +365,23 @@ export class MapsPageComponent implements OnDestroy {
 
   @HostListener('document:keydown.escape')
   closeInfoOnEscape(): void {
+    if (this.addOpen()) {
+      this.closeAdd();
+      return;
+    }
+    if (this.applySelectedOpen()) {
+      this.closeApplySelected();
+      return;
+    }
     if (this.infoItem()) {
       this.closeInfo();
     }
   }
 
   openProfile(url: string): void {
+    if (!url.trim()) {
+      return;
+    }
     this.browser.open(url);
   }
 
@@ -241,51 +389,103 @@ export class MapsPageComponent implements OnDestroy {
     this.browser.openDownloads('maps');
   }
 
+  openAddZip(): void {
+    this.openAdd('zip');
+  }
+
+  openAddUrl(): void {
+    this.openAdd('url');
+  }
+
+  closeAdd(): void {
+    this.addOpen.set(false);
+  }
+
+  confirmAdd(id: number): void {
+    this.addOpen.set(false);
+    if (this.addMode() === 'zip') {
+      this.importFromDisk(id);
+      return;
+    }
+    this.startDownload(id);
+  }
+
+  private openAdd(mode: AddModMode): void {
+    if (this.isBusy()) {
+      return;
+    }
+    this.addMode.set(mode);
+    this.addOpen.set(true);
+  }
+
+  private importFromDisk(id: number): void {
+    this.importing.set(true);
+    this.browser.importZip('maps', id).then((status) => {
+      if (status === 'ok') {
+        this.setNote(id, 'Copied from disk. You can Apply.');
+        this.newDownloads.forget('maps', id);
+        this.loadLocal();
+        this.downloadActivity.notifyInventoryChanged();
+      } else if (status === 'fail') {
+        this.setNote(id, 'Could not copy those files.');
+      }
+    }).finally(() => this.importing.set(false));
+  }
+
   openFolder(mod: CatalogItem): void {
     const path = this.folders()[mod.id];
     if (!path) {
       return;
     }
-    this.browser.openFolder(path);
+    void this.browser.openFolder(path).then((error) => {
+      if (error) {
+        this.setNote(mod.id, error);
+      }
+    });
   }
 
   download(mod: CatalogItem): void {
-    if (this.isDownloading(mod.id)) {
+    this.startDownload(mod.id);
+  }
+
+  private startDownload(id: number): void {
+    if (this.isDownloading(id)) {
       return;
     }
-    this.downloadingIds.update((ids) => new Set(ids).add(mod.id));
+    this.downloadingIds.update((ids) => new Set(ids).add(id));
 
     this.ipc
-      .request(IPC_MESSAGE.MOD_DOWNLOAD, { id: mod.id })
+      .request(IPC_MESSAGE.MOD_DOWNLOAD, { id })
       .then((reply) => {
         if (!reply.ok) {
-          this.setNote(mod.id, reply.error ?? 'Download failed.');
+          this.setNote(id, reply.error ?? 'Download failed.');
           this.downloadedIds.update((ids) => {
             const next = new Set(ids);
-            next.delete(mod.id);
+            next.delete(id);
             return next;
           });
           this.loadLocal();
           return;
         }
-        this.downloadedIds.update((ids) => new Set(ids).add(mod.id));
-        this.setNote(mod.id, 'Downloaded. You can Apply.');
+        this.downloadedIds.update((ids) => new Set(ids).add(id));
+        this.setNote(id, 'Downloaded. You can Apply.');
+        this.newDownloads.forget('maps', id);
         this.loadLocal();
         if (this.isLibrary()) {
           this.loadLibrary();
         }
       })
       .catch((error: unknown) => {
-        this.setNote(mod.id, error instanceof Error ? error.message : 'Download failed.');
+        this.setNote(id, error instanceof Error ? error.message : 'Download failed.');
         this.loadLocal();
       })
       .finally(() => {
         this.downloadingIds.update((ids) => {
           const next = new Set(ids);
-          next.delete(mod.id);
+          next.delete(id);
           return next;
         });
-        this.downloadActivity.clear('maps', mod.id);
+        this.downloadActivity.clear('maps', id);
         this.downloadActivity.notifyInventoryChanged();
       });
   }
@@ -298,32 +498,112 @@ export class MapsPageComponent implements OnDestroy {
     if (this.isBusy()) {
       return;
     }
-    this.applyingId.set(mod.id);
+    void this.applyOne(mod.id);
+  }
 
-    this.ipc
-      .request(IPC_MESSAGE.MOD_APPLY, { id: mod.id })
+  openApplySelected(): void {
+    if (this.isBusy()) {
+      return;
+    }
+
+    const ids = [...this.downloadedIds()];
+    if (ids.length === 0) {
+      return;
+    }
+
+    this.applySelectedOpen.set(true);
+    this.applySelectedRows.set([]);
+    this.applySelectedStatus.set('Loading…');
+    this.ipc.request(IPC_MESSAGE.CATALOG_BY_IDS, { kind: 'maps', ids }).then((reply) => {
+      if (!this.applySelectedOpen()) {
+        return;
+      }
+      const data = reply.ok ? (reply.payload as CatalogPage | undefined) : undefined;
+      this.applySelectedRows.set(
+        applySelectedRows(ids, data?.items ?? [], this.crashes.ids('maps')),
+      );
+      this.applySelectedStatus.set(null);
+    });
+  }
+
+  closeApplySelected(): void {
+    if (this.applySelectedRunning()) {
+      return;
+    }
+    this.applySelectedOpen.set(false);
+    this.applySelectedStatus.set(null);
+  }
+
+  runApplySelected(ids: number[]): void {
+    if (this.isBusy() || ids.length === 0) {
+      return;
+    }
+    void this.applyMany(ids);
+  }
+
+  private async applyMany(ids: number[]): Promise<void> {
+    this.applySelectedRunning.set(true);
+    const names = new Map(this.applySelectedRows().map((row) => [row.id, row.name]));
+    const failed: string[] = [];
+    let okCount = 0;
+    try {
+      for (let index = 0; index < ids.length; index++) {
+        const id = ids[index];
+        this.applySelectedStatus.set(
+          `Applying ${index + 1} of ${ids.length}: ${names.get(id) ?? id}`,
+        );
+        const ok = await this.applyOne(id, false);
+        if (ok) {
+          okCount += 1;
+        } else {
+          failed.push(names.get(id) ?? String(id));
+        }
+      }
+      this.applySelectedStatus.set(applySelectedDone(okCount, failed));
+      await this.loadout.refresh();
+      if (libraryFollowsLoadout(this.libraryFilter())) {
+        this.loadLibrary();
+      }
+      if (failed.length === 0) {
+        this.applySelectedOpen.set(false);
+      }
+    } finally {
+      this.applySelectedRunning.set(false);
+    }
+  }
+
+  private applyOne(modId: number, refreshLoadout = true): Promise<boolean> {
+    this.applyingId.set(modId);
+    return this.ipc
+      .request(IPC_MESSAGE.MOD_APPLY, { id: modId })
       .then((reply) => {
         if (!reply.ok) {
-          this.setNote(mod.id, reply.error ?? 'Apply failed.');
-          return;
+          this.setNote(modId, reply.error ?? 'Apply failed.');
+          return false;
         }
         const result = reply.payload as ApplyAttempt | undefined;
         if (result?.applied) {
-          this.setNote(mod.id, result.reason ?? 'Applied.');
-          void this.loadout.refresh().then(() => {
-            if (this.libraryFilter() === 'applied') {
-              this.loadLibrary();
-            }
-          });
-          return;
+          this.setNote(modId, result.reason ?? 'Applied.');
+          if (refreshLoadout) {
+            void this.loadout.refresh().then(() => {
+              if (libraryFollowsLoadout(this.libraryFilter())) {
+                this.loadLibrary();
+              }
+            });
+          }
+          return true;
         }
-        this.setNote(mod.id, result?.reason ?? 'Apply did not change any files.');
+        this.setNote(modId, result?.reason ?? 'Apply did not change any files.');
+        return true;
       })
       .catch((error: unknown) => {
-        this.setNote(mod.id, error instanceof Error ? error.message : 'Apply failed.');
+        const message = error instanceof Error ? error.message : 'Apply failed.';
+        this.setNote(modId, message);
+        return false;
       })
       .finally(() => {
         this.applyingId.set(null);
+        this.applyActivity.clear('maps', modId);
       });
   }
 
@@ -366,7 +646,7 @@ export class MapsPageComponent implements OnDestroy {
         const result = reply.payload as ApplyAttempt | undefined;
         this.setNote(mod.id, result?.reason ?? 'Removed.');
         return this.loadout.refresh().then(() => {
-          if (this.libraryFilter() === 'applied') {
+          if (libraryFollowsLoadout(this.libraryFilter())) {
             this.loadLibrary();
           }
           return true;
@@ -378,6 +658,7 @@ export class MapsPageComponent implements OnDestroy {
       })
       .finally(() => {
         this.resettingId.set(null);
+        this.applyActivity.clear('maps', mod.id);
       });
   }
 
@@ -428,6 +709,17 @@ export class MapsPageComponent implements OnDestroy {
       });
   }
 
+  private leaveOnDisk(): void {
+    if (this.libraryFilter() !== 'disk') {
+      return;
+    }
+
+    this.newDownloads.markSeen(
+      'maps',
+      [...this.downloadedIds()].filter((id) => this.isNew(id)),
+    );
+  }
+
   private setNote(modId: number, message: string): void {
     this.cardNote.update((notes) => ({ ...notes, [modId]: message }));
   }
@@ -443,16 +735,21 @@ export class MapsPageComponent implements OnDestroy {
       const counts: Record<number, number | null> = {};
       const sizes: Record<number, number> = {};
       const folders: Record<number, string> = {};
+      const times: Record<number, string> = {};
       for (const item of items) {
         folders[item.id] = item.folder;
         counts[item.id] = item.mapCount ?? null;
         if (item.sizeBytes !== undefined) {
           sizes[item.id] = item.sizeBytes;
         }
+        if (item.downloadedUtc) {
+          times[item.id] = item.downloadedUtc;
+        }
       }
       this.folders.set(folders);
       this.mapCounts.set(counts);
       this.sizeBytes.set(sizes);
+      this.downloadedAt.set(times);
       if (this.isLibrary()) {
         this.loadLibrary();
       }
@@ -460,10 +757,12 @@ export class MapsPageComponent implements OnDestroy {
   }
 
   private loadLibrary(): void {
-    const ids =
-      this.libraryFilter() === 'applied'
-        ? [...this.loadout.activeMapIds()]
-        : [...this.downloadedIds()];
+    const ids = libraryIds(
+      this.libraryFilter(),
+      this.downloadedIds(),
+      this.loadout.activeMapIds(),
+      this.likes.mapIds(),
+    );
     const token = ++this.loadToken;
     this.loading.set(true);
     this.error.set(null);
@@ -506,7 +805,7 @@ export class MapsPageComponent implements OnDestroy {
       });
   }
 
-  private load(page: number): void {
+  private load(page: number, rememberPage = true): void {
     if (this.isLibrary()) {
       this.loadLibrary();
       return;
@@ -520,6 +819,7 @@ export class MapsPageComponent implements OnDestroy {
         page,
         query: this.query(),
         sort: this.sort(),
+        authorId: this.authorFilter()?.id ?? 0,
       })
       .then((reply) => {
         if (token !== this.loadToken) {
@@ -538,6 +838,9 @@ export class MapsPageComponent implements OnDestroy {
 
         this.items.set(data.items);
         this.page.set(data.page);
+        if (rememberPage) {
+          this.lastPage.set(data.page);
+        }
         this.totalCount.set(data.totalCount);
         this.totalPages.set(this.computeTotalPages(data));
       })

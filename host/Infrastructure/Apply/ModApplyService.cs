@@ -38,7 +38,8 @@ public static class ModApplyService
     public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryApplySound(
         int soundId,
         bool downloadIfMissing = false,
-        string? category = null)
+        string? category = null,
+        string? targetFileName = null)
     {
         var musicWrite = EnsureCanWriteMusic();
         if (musicWrite.Error is not null)
@@ -47,7 +48,7 @@ public static class ModApplyService
         }
 
         ApplyProgress.Begin("sounds", soundId, "apply", 1);
-        var applied = ApplySound(musicWrite.Mp3Folder!, soundId, downloadIfMissing, category);
+        var applied = ApplySound(musicWrite.Mp3Folder!, soundId, downloadIfMissing, category, targetFileName);
         if (applied.Ok)
         {
             ApplyProgress.Report(1, 1);
@@ -110,12 +111,6 @@ public static class ModApplyService
             return (false, musicWrite.Error, null);
         }
 
-        if (!string.IsNullOrWhiteSpace(sourceUrl)
-            && Path.GetExtension(targetFileName).Equals(".wem", StringComparison.OrdinalIgnoreCase))
-        {
-            return (false, "Direct MP3 links cannot replace Wwise .wem tracks. Pick a .wem with the same name, or convert it first.", null);
-        }
-
         string? picked = null;
         var downloaded = false;
         if (!string.IsNullOrWhiteSpace(sourceUrl))
@@ -140,12 +135,17 @@ public static class ModApplyService
             }
         }
 
+        ApplyProgress.Begin("sounds", ApplyProgress.CustomReplaceId, "apply", 100);
+        ApplyProgress.Note("Preparing…");
+
         try
         {
             Mp3Applier.ReplaceTrack(musicWrite.Mp3Folder!, targetFileName, picked);
             return (true, null, new ApplyAttemptDto(true, "Replaced " + targetFileName + "."));
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
+        catch (Exception ex) when (
+            ex is IOException or InvalidOperationException or UnauthorizedAccessException
+            or HttpRequestException or TaskCanceledException)
         {
             return (false, "Replace failed: " + ex.Message, null);
         }
@@ -617,13 +617,9 @@ public static class ModApplyService
         string mp3Folder,
         int soundId,
         bool downloadIfMissing,
-        string? category)
+        string? category,
+        string? targetFileName = null)
     {
-        if (SoundApplyKind.BlocksCatalogApply(category))
-        {
-            return (false, SoundApplyKind.CatalogBlockedMessage(), null);
-        }
-
         var folder = AppPaths.SoundDownloadsFolder(soundId);
         if (!Directory.Exists(folder) || !Directory.EnumerateFileSystemEntries(folder).Any())
         {
@@ -659,7 +655,7 @@ public static class ModApplyService
         try
         {
             var downloadFolder = AppPaths.SoundDownloadsFolder(soundId);
-            var audioCount = Mp3Applier.ApplyDownloadFolder(mp3Folder, downloadFolder, category);
+            var audioCount = Mp3Applier.ApplyDownloadFolder(mp3Folder, downloadFolder, category, targetFileName);
             var game = BrawlhallaLocator.Resolve();
             var swf = SoundSwfApplier.ApplyDownloadFolder(
                 game.Found ? game.Path : null,
@@ -682,7 +678,9 @@ public static class ModApplyService
 
             return (true, null, new ApplyAttemptDto(true, reason));
         }
-        catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException)
+        catch (Exception ex) when (
+            ex is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException
+            or HttpRequestException or TaskCanceledException)
         {
             return (false, "Apply failed: " + ex.Message, null);
         }
@@ -695,7 +693,7 @@ public static class ModApplyService
             return "This pack only replaces Sound.swf / Sound02.swf. Current Brawlhalla no longer has those files, so the game would ignore a copy. These GameBanana UI / weapon / announcer packs cannot Apply.";
         }
 
-        return "This pack has no .bnk / .wem / .mp3 whose name matches a vanilla file under audio\\pc. Music / Win / Main Theme cannot Apply this way.";
+        return Mp3Applier.NeedsTrackMessage();
     }
 
     private static string ApplySoundReason(int audioCount, int swfCount)

@@ -15,6 +15,7 @@ export interface LocalDownload {
   folder: string;
   mapCount?: number | null;
   sizeBytes?: number;
+  downloadedUtc?: string | null;
 }
 
 export interface MapNamesResult {
@@ -23,6 +24,27 @@ export interface MapNamesResult {
 
 export interface LocalDownloadList {
   items: LocalDownload[];
+}
+
+export interface DownloadSummary {
+  count: number;
+  sizeBytes: number;
+  folder?: string;
+  isDefault?: boolean;
+}
+
+export interface DownloadsLocation {
+  path: string;
+  cancelled?: boolean;
+  error?: string;
+}
+
+export interface DownloadImport {
+  id: number;
+  folder: string;
+  fileCount: number;
+  cancelled?: boolean;
+  error?: string;
 }
 
 export type DownloadKind = 'maps' | 'sounds' | 'skins';

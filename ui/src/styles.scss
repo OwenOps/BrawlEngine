@@ -421,6 +421,12 @@ button:focus-visible {
   color: var(--downloaded);
 }
 
+.card .badge.new,
+.sound-row .badge.new {
+  background: #3a2a12;
+  color: #f0c56a;
+}
+
 .card .badge.nsfw,
 .sound-row .badge.nsfw {
   background: #3a2418;

@@ -2,7 +2,7 @@
   <h2>Custom audio</h2>
   <ol class="steps">
     <li>The app looks in <code>audio\pc</code> for Wwise <code>.wem</code> files (or the old <code>mp3</code> folder if you still have it).</li>
-    <li>Pick a track (names come from <code>MUS_*.bnk</code>). Replace it with a matching <code>.wem</code> — not an MP3.</li>
+    <li>Pick a track (names come from <code>MUS_*.bnk</code>). Replace with a <code>.wem</code>, or an MP3 / WAV / OGG. The first convert downloads ffmpeg. The game plays the <code>.bnk</code> — Replace also writes that bank.</li>
   </ol>
   @if (tracks().length === 0) {
     <p class="error">
@@ -30,11 +30,6 @@
     @if (selectedSlotHint(); as hint) {
       <p class="hint">{{ hint }}</p>
     }
-    @if (usesWem()) {
-      <p class="hint">
-        Current Brawlhalla music is Wwise. Copying an MP3 over a .wem will not play. GameBanana packs must include matching .wem names.
-      </p>
-    } @else {
     <div class="custom-row">
       <input
         type="url"
@@ -47,9 +42,8 @@
         {{ replacing() ? 'Replacing…' : 'Replace from URL' }}
       </button>
     </div>
-    }
   }
-  @if (customNote(); as note) {
+  @if (convertStatus(); as note) {
     <p class="note">{{ note }}</p>
   }
 </section>
@@ -61,7 +55,7 @@
       GameBanana Sounds. Apply copies matching vanilla names under <code>audio\pc</code>
       (including <code>English(US)</code>). Old <code>Sound.swf</code> / <code>Sound02.swf</code> packs
       (many UI / Weapon / announcer mods) cannot Apply — current Brawlhalla dropped those files.
-      Chips only filter the list. Music / Win Theme / Main Theme cannot Apply.
+      Chips only filter the list. Music / Win Theme / Main Theme Apply when filenames match, or pick a track above to convert an MP3.
     </p>
     <div class="head-actions">
       <button type="button" class="link" (click)="openDownloadsFolder()">
@@ -240,6 +234,9 @@
         }         @else if (isDownloaded(item.id)) {
           <span class="badge downloaded">Downloaded</span>
         }
+        @if (isNew(item.id)) {
+          <span class="badge new">New</span>
+        }
         @if (item.nsfw) {
           <span class="badge nsfw">NSFW</span>
         }
@@ -277,12 +274,7 @@
             type="button"
             class="primary"
             (click)="apply(item)"
-            [disabled]="isBusy() || !canApply(item)"
-            [attr.title]="
-              canApply(item)
-                ? null
-                : 'Music, Win Theme, and Main Theme cannot Apply (need matching banks, not a random MP3).'
-            "
+            [disabled]="isBusy()"
           >
             {{
               applyingId() === item.id
@@ -378,7 +370,7 @@
         (profile)="openProfile($event)"
         (more)="moreFromAuthor($event)"
       />
-      <p class="hint">Sounds on this tab come from GameBanana. Apply copies matching .bnk / .wem names. Old Sound.swf packs cannot Apply on current Brawlhalla. Music / Win / Main Theme cannot Apply.</p>
+      <p class="hint">Sounds on this tab come from GameBanana. Apply copies matching .bnk / .wem names, or converts an MP3 onto the track picked under Custom audio. Old Sound.swf packs cannot Apply on current Brawlhalla.</p>
       <div class="sheet-actions">
         <button type="button" class="primary" (click)="openProfile(item.profileUrl)">
           View on GameBanana

@@ -22,6 +22,23 @@ public static class DownloadInventory
             _ => AppPaths.DownloadsRoot,
         };
 
+    public static DownloadSummaryDto Summary()
+    {
+        var maps = List("maps");
+        var sounds = List("sounds");
+        var skins = List("skins");
+        var count = maps.Items.Count + sounds.Items.Count + skins.Items.Count;
+        var size =
+            maps.Items.Sum(item => item.SizeBytes)
+            + sounds.Items.Sum(item => item.SizeBytes)
+            + skins.Items.Sum(item => item.SizeBytes);
+        return new DownloadSummaryDto(
+            count,
+            size,
+            AppPaths.DownloadsRoot,
+            DownloadsLocator.IsUsingDefault());
+    }
+
     private static LocalDownloadListDto ListMaps()
     {
         var root = AppPaths.DownloadsRoot;
@@ -40,9 +57,18 @@ public static class DownloadInventory
                 continue;
             }
 
-            if (int.TryParse(name, out var id) && HasFiles(dir))
+            if (int.TryParse(name, out var id))
             {
-                items.Add(ToItem(id, dir));
+                var (hasFiles, size) = FolderStats(dir);
+                if (hasFiles)
+                {
+                    items.Add(new LocalDownloadDto(
+                        id,
+                        dir,
+                        MapCount: null,
+                        SizeBytes: size,
+                        DownloadedUtc: FolderWrittenUtc(dir)));
+                }
             }
         }
 
@@ -60,27 +86,33 @@ public static class DownloadInventory
         foreach (var dir in Directory.GetDirectories(root))
         {
             var name = Path.GetFileName(dir);
-            if (int.TryParse(name, out var id) && HasFiles(dir))
+            if (int.TryParse(name, out var id))
             {
-                items.Add(ToItem(id, dir));
+                var (hasFiles, size) = FolderStats(dir);
+                if (hasFiles)
+                {
+                    items.Add(new LocalDownloadDto(
+                        id,
+                        dir,
+                        MapCount: null,
+                        SizeBytes: size,
+                        DownloadedUtc: FolderWrittenUtc(dir)));
+                }
             }
         }
 
         return new LocalDownloadListDto(items);
     }
 
-    private static LocalDownloadDto ToItem(int id, string folder)
-    {
-        return new LocalDownloadDto(id, folder, MapCount: null, SizeBytes: FolderSize(folder));
-    }
-
-    private static long FolderSize(string folder)
+    private static (bool HasFiles, long SizeBytes) FolderStats(string folder)
     {
         long total = 0;
+        var any = false;
         try
         {
             foreach (var file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories))
             {
+                any = true;
                 try
                 {
                     total += new FileInfo(file).Length;
@@ -92,15 +124,31 @@ public static class DownloadInventory
         }
         catch (IOException)
         {
-            return 0;
+            return (false, 0);
         }
 
-        return total;
+        return (any, total);
     }
 
-    private static bool HasFiles(string folder)
+    private static DateTimeOffset FolderWrittenUtc(string folder)
     {
-        return Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Any();
+        var latest = Directory.GetLastWriteTimeUtc(folder);
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories))
+            {
+                var written = File.GetLastWriteTimeUtc(file);
+                if (written > latest)
+                {
+                    latest = written;
+                }
+            }
+        }
+        catch (IOException)
+        {
+        }
+
+        return new DateTimeOffset(DateTime.SpecifyKind(latest, DateTimeKind.Utc));
     }
 
     /// <summary>Frees disk space for a mod already applied — the game files it copied stay untouched.</summary>

@@ -18,7 +18,8 @@ public sealed record BmodSwfReplace(
     IReadOnlyList<BmodColorScript> ColorScripts);
 
 public sealed record BmodPack(
-    IReadOnlyList<BmodSwfReplace> Swfs);
+    IReadOnlyList<BmodSwfReplace> Swfs,
+    int SkippedScripts = 0);
 
 public static class BmodManifest
 {
@@ -93,6 +94,7 @@ public static class BmodManifest
         }
 
         var list = new List<BmodSwfReplace>();
+        var skippedScripts = 0;
         foreach (var swf in swfsEl.EnumerateObject())
         {
             if (swf.Value.ValueKind != JsonValueKind.Object)
@@ -100,11 +102,13 @@ public static class BmodManifest
                 return (null, "This pack's swfs mapping is not understood. Apply stopped.");
             }
 
-            var (colorScripts, scriptError) = ReadColorScripts(swf.Value);
+            var (colorScripts, skipped, scriptError) = ReadColorScripts(swf.Value);
             if (scriptError is not null)
             {
                 return (null, scriptError);
             }
+
+            skippedScripts += skipped;
 
             if (HasSounds(swf.Value))
             {
@@ -149,7 +153,7 @@ public static class BmodManifest
             return (null, "This pack lists no sprites to replace. Apply stopped.");
         }
 
-        return (new BmodPack(list), null);
+        return (new BmodPack(list, skippedScripts), null);
     }
 
     public static (BmodPack? Pack, string? Error) TryParseMany(IReadOnlyList<string> bmodPaths)
@@ -158,6 +162,7 @@ public static class BmodManifest
         var colorsBySwf = new Dictionary<string, List<BmodColorScript>>(StringComparer.OrdinalIgnoreCase);
         string? lastError = null;
         var any = false;
+        var skippedScripts = 0;
         foreach (var path in bmodPaths)
         {
             var (pack, error) = TryParse(path);
@@ -168,6 +173,7 @@ public static class BmodManifest
             }
 
             any = true;
+            skippedScripts += pack.SkippedScripts;
             foreach (var swf in pack.Swfs)
             {
                 if (!spritesBySwf.TryGetValue(swf.FileName, out var sprites))
@@ -218,13 +224,13 @@ public static class BmodManifest
             return (null, "This pack lists no sprites to replace. Apply stopped.");
         }
 
-        return (new BmodPack(list), null);
+        return (new BmodPack(list, skippedScripts), null);
     }
 
     /// <summary>
     /// The one script shape Apply understands: a class whose frame1 assigns a list of
     /// colour numbers. Whitespace is dropped first because packs indent this differently.
-    /// Anything else is refused rather than half applied.
+    /// Extra scripts (Harley Quinn a_Arm1_Xavier, etc.) are skipped like missing sprites.
     /// </summary>
     private static readonly Regex ColorScriptShape = new(
         @"^package\{importflash\.display\.MovieClip;public(?:dynamic)?class(?<name>[A-Za-z_$][\w$]*)"
@@ -232,41 +238,43 @@ public static class BmodManifest
             + @"addFrameScript\(0,this\.frame1\);\}functionframe1\(\):\*\{this\.a=\[(?<colors>[\d,]*)\];\}\}\}$",
         RegexOptions.Compiled);
 
-    private static (IReadOnlyList<BmodColorScript> Scripts, string? Error) ReadColorScripts(
+    private static (IReadOnlyList<BmodColorScript> Scripts, int Skipped, string? Error) ReadColorScripts(
         JsonElement swf)
     {
         if (!swf.TryGetProperty("scripts", out var scripts)
             || scripts.ValueKind != JsonValueKind.Object)
         {
-            return ([], null);
+            return ([], 0, null);
         }
 
         var list = new List<BmodColorScript>();
+        var skipped = 0;
         foreach (var script in scripts.EnumerateObject())
         {
             if (script.Value.ValueKind != JsonValueKind.String)
             {
-                return ([], "This pack's script " + script.Name + " is not understood. Apply stopped.");
+                return ([], 0, "This pack's script " + script.Name + " is not understood. Apply stopped.");
             }
 
             var match = ColorScriptShape.Match(Squeeze(script.Value.GetString()!));
             if (!match.Success
                 || !string.Equals(match.Groups["name"].Value, script.Name, StringComparison.Ordinal))
             {
-                return ([], "This pack's script " + script.Name
-                    + " does more than set colours, which Apply does not support yet.");
+                skipped++;
+                continue;
             }
 
             var (colors, colorError) = ReadColorList(match.Groups["colors"].Value, script.Name);
             if (colorError is not null)
             {
-                return ([], colorError);
+                skipped++;
+                continue;
             }
 
             list.Add(new BmodColorScript(script.Name, colors));
         }
 
-        return (list, null);
+        return (list, skipped, null);
     }
 
     private static (IReadOnlyList<int> Colors, string? Error) ReadColorList(
@@ -281,7 +289,7 @@ public static class BmodManifest
         var colors = new List<int>();
         foreach (var part in text.Split(','))
         {
-            if (!int.TryParse(part, out var color) || color < 0)
+            if (!TryReadColor(part, out var color))
             {
                 return ([], "This pack's script " + scriptName
                     + " has a colour Apply cannot read: " + part);
@@ -291,6 +299,32 @@ public static class BmodManifest
         }
 
         return (colors, null);
+    }
+
+    /// <summary>
+    /// Packs write ARGB as a uint (4294967210 = 0xFFFFFFAA). AVM2 pushint is signed,
+    /// so keep the same 32 bits.
+    /// </summary>
+    private static bool TryReadColor(string part, out int color)
+    {
+        color = 0;
+        if (part.Length == 0)
+        {
+            return false;
+        }
+
+        if (int.TryParse(part, out color))
+        {
+            return true;
+        }
+
+        if (!uint.TryParse(part, out var bits))
+        {
+            return false;
+        }
+
+        color = unchecked((int)bits);
+        return true;
     }
 
     private static string Squeeze(string text)

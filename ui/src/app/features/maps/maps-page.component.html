@@ -2,12 +2,28 @@
   <div>
     <h1>Maps</h1>
     <p class="hint">Brawlhalla Realms from GameBanana. Download, then Apply.</p>
-    <button type="button" class="link" (click)="openDownloadsFolder()">
-      Open downloads folder
-    </button>
+    <div class="head-actions">
+      <button type="button" class="link" (click)="openDownloadsFolder()">
+        Open downloads folder
+      </button>
+      <button type="button" class="link" (click)="openAddZip()" [disabled]="isBusy()">
+        Add zip…
+      </button>
+      <button type="button" class="link" (click)="openAddUrl()" [disabled]="isBusy()">
+        Add from URL…
+      </button>
+      <button
+        type="button"
+        class="link"
+        (click)="openApplySelected()"
+        [disabled]="diskCount() === 0 || isBusy()"
+      >
+        Apply selected…
+      </button>
+    </div>
   </div>
   @if (isLibrary()) {
-    <p class="count">{{ shownItems().length }} {{ libraryFilter() === 'disk' ? 'on disk' : 'applied' }}</p>
+    <p class="count">{{ shownItems().length }} {{ libraryStatusLabel(libraryFilter()) }}</p>
   } @else if (totalCount() > 0) {
     <p class="count">{{ totalCount() }} realms</p>
   }
@@ -29,6 +45,12 @@
       }
     </select>
   </label>
+  @if (!isLibrary()) {
+    <label class="nsfw-toggle">
+      <input type="checkbox" [checked]="nsfw.show()" (change)="nsfw.setFromCheckbox($event)" />
+      Show NSFW
+    </label>
+  }
 </div>
 
 <div class="filter-bar">
@@ -45,7 +67,22 @@
         {{ option.label }}
       </button>
     }
+    @if (authorFilter(); as author) {
+      <button
+        type="button"
+        class="chip active"
+        [attr.aria-label]="'Clear author filter ' + author.name"
+        (click)="clearAuthor()"
+      >
+        By {{ author.name }} ×
+      </button>
+    }
   </div>
+  @if (showBackToPage()) {
+    <button type="button" class="link" (click)="backToLastPage()" [disabled]="loading()">
+      Back to page {{ lastPage() }}
+    </button>
+  }
 </div>
 
 @if (error(); as errorMessage) {
@@ -57,14 +94,18 @@
 @if (loading() && shownItems().length === 0) {
   <div class="catalog-loader" role="status" aria-live="polite">
     <span class="catalog-loader-spin" aria-hidden="true"></span>
-    <p>Loading maps…</p>
+    <p>{{ isLibrary() ? libraryWait : gameBananaWait }}</p>
   </div>
 } @else if (!loading() && shownItems().length === 0 && !error()) {
   <div class="empty-state">
     @if (libraryFilter() === 'disk') {
-      <p class="hint">Nothing on disk yet. Download a map first.</p>
+      <p class="hint">Nothing on disk yet. Download from the catalog, or drop a zip into a folder named with the GameBanana id, or Add from disk.</p>
     } @else if (libraryFilter() === 'applied') {
       <p class="hint">No maps in the current loadout.</p>
+    } @else if (libraryFilter() === 'notApplied') {
+      <p class="hint">Every map on disk is already applied.</p>
+    } @else if (libraryFilter() === 'liked') {
+      <p class="hint">No liked maps yet. Heart a card to save it here.</p>
     } @else {
       <p class="hint">No realms found.</p>
     }
@@ -72,18 +113,23 @@
 }
 
 <div class="catalog-panel">
-  @if (loading() && shownItems().length > 0) {
-    <div class="catalog-loader overlay" role="status">
+  @if (catalogBusy(); as wait) {
+    <div class="catalog-loader overlay" role="status" aria-live="polite">
       <span class="catalog-loader-spin" aria-hidden="true"></span>
-      <p>Loading maps…</p>
+      <p>{{ wait }}</p>
     </div>
   }
-  <div class="grid" [class.is-loading]="loading() && shownItems().length > 0">
+  <div class="grid" [class.is-loading]="catalogBusy()">
   @for (mod of shownItems(); track mod.id) {
-    <article class="card" [class.is-downloading]="isDownloading(mod.id)">
-      <div class="thumb">
+    <article class="card" [class.is-downloading]="isDownloading(mod.id) || applyingId() === mod.id || resettingId() === mod.id">
+      <div class="thumb" [class.is-nsfw-blur]="mod.nsfw && !nsfw.show()">
         @if (mod.thumbnailUrl) {
-          <img [src]="mod.thumbnailUrl" [alt]="mod.name" loading="lazy" decoding="async" />
+          <img
+            [src]="mod.thumbnailUrl | thumbSrc"
+            [alt]="mod.nsfw && !nsfw.show() ? 'NSFW thumbnail hidden' : mod.name"
+            loading="lazy"
+            decoding="async"
+          />
         } @else {
           <div class="thumb-fallback">{{ initial(mod.name) }}</div>
         }
@@ -93,20 +139,61 @@
           } @else if (isDownloaded(mod.id)) {
             <span class="badge downloaded">Downloaded</span>
           }
+          @if (isNew(mod.id)) {
+            <span class="badge new">New</span>
+          }
           @if (packLabel(mod.id); as pack) {
             <span class="badge pack">{{ pack }}</span>
           }
+          @if (mod.nsfw) {
+            <span class="badge nsfw">NSFW</span>
+          }
+          @if (isCrashTagged(mod.id)) {
+            <span class="badge crash" [title]="crashNote(mod.id) ?? 'Crashes'">Crashes</span>
+          }
         </div>
+        <button
+          type="button"
+          class="thumb-like"
+          [class.is-liked]="isLiked(mod.id)"
+          [attr.aria-pressed]="isLiked(mod.id)"
+          [attr.aria-label]="isLiked(mod.id) ? 'Unlike ' + mod.name : 'Like ' + mod.name"
+          [title]="isLiked(mod.id) ? 'Unlike' : 'Like'"
+          (click)="toggleLike(mod, $event)"
+        >
+          {{ isLiked(mod.id) ? '♥' : '♡' }}
+        </button>
+        <button
+          type="button"
+          class="thumb-crash"
+          [class.is-crash]="isCrashTagged(mod.id)"
+          [attr.aria-pressed]="isCrashTagged(mod.id)"
+          [attr.aria-label]="isCrashTagged(mod.id) ? 'Clear crashes tag on ' + mod.name : 'Mark ' + mod.name + ' as crashes'"
+          [title]="isCrashTagged(mod.id) ? (crashNote(mod.id) ?? 'Clear crashes tag') : 'Mark as crashes'"
+          (click)="toggleCrash(mod, $event)"
+        >
+          ⚠
+        </button>
         <button type="button" class="thumb-info" title="Info" [attr.aria-label]="'Info for ' + mod.name" (click)="openInfo(mod)">
           ℹ
         </button>
+        @if (applyActivity.isActive('maps', mod.id) || applyingId() === mod.id || resettingId() === mod.id) {
+          <div class="thumb-work" role="status">
+            <span class="catalog-loader-spin" aria-hidden="true"></span>
+            <p>{{ applyActivity.labelFor('maps', mod.id, resettingId() === mod.id ? 'reset' : 'apply') }}</p>
+          </div>
+        }
       </div>
       <div class="card-body">
         <h3 [title]="mod.name">{{ mod.name }}</h3>
-        <p class="author">{{ mod.author }}</p>
+        <app-author-credit [item]="mod" (profile)="openProfile($event)" (more)="moreFromAuthor($event)" />
         @if (isDownloading(mod.id)) {
           <div class="progress-bar" [class.indeterminate]="downloadPercent(mod.id) === null">
             <div class="progress-bar-fill" [style.width.%]="downloadPercent(mod.id) ?? 100"></div>
+          </div>
+        } @else if (applyActivity.isActive('maps', mod.id) || applyingId() === mod.id || resettingId() === mod.id) {
+          <div class="progress-bar" [class.indeterminate]="applyActivity.percentFor('maps', mod.id) === null">
+            <div class="progress-bar-fill" [style.width.%]="applyActivity.percentFor('maps', mod.id) ?? 100"></div>
           </div>
         }
         <div class="actions">
@@ -123,7 +210,7 @@
             <button type="button" class="primary wide" (click)="apply(mod)" [disabled]="isBusy()">
               {{
                 applyingId() === mod.id
-                  ? 'Applying…'
+                  ? applyActivity.labelFor('maps', mod.id)
                   : isActive(mod.id)
                     ? '↻ Re-apply'
                     : '✓ Apply'
@@ -137,7 +224,7 @@
                   (click)="reset(mod)"
                   [disabled]="isBusy()"
                 >
-                  {{ resettingId() === mod.id ? 'Resetting…' : 'Reset' }}
+                  {{ resettingId() === mod.id ? applyActivity.labelFor('maps', mod.id, 'reset') : 'Reset' }}
                 </button>
               }
               <button type="button" (click)="openFolder(mod)">Open folder</button>
@@ -145,7 +232,7 @@
                 type="button"
                 class="icon-btn danger"
               aria-label="Delete downloaded files"
-                [title]="diskSize(mod.id) ? 'Delete downloaded files (' + diskSize(mod.id) + ')' : 'Delete downloaded files (keeps it applied in-game)'"
+                [title]="diskSize(mod.id) ? 'Delete from disk (' + diskSize(mod.id) + '). If applied, you can also Reset.' : 'Delete downloaded files'"
                 (click)="deleteDownload(mod)"
                 [disabled]="isBusy()"
               >
@@ -171,7 +258,21 @@
     <button type="button" (click)="goToPage(page() - 1)" [disabled]="loading() || page() <= 1">
       ‹ Prev
     </button>
-    <span>Page {{ page() }} of {{ totalPages() }}</span>
+    <label class="pager-jump">
+      Page
+      <input
+        type="number"
+        inputmode="numeric"
+        min="1"
+        [max]="totalPages()"
+        [value]="page()"
+        [disabled]="loading()"
+        aria-label="Go to page"
+        (change)="jumpToPage($event)"
+        (keydown.enter)="jumpToPage($event)"
+      />
+      of {{ totalPages() }}
+    </label>
     <button type="button" (click)="goToPage(page() + 1)" [disabled]="loading() || page() >= totalPages()">
       Next ›
     </button>
@@ -182,7 +283,12 @@
   <div class="overlay" (click)="closeInfo()">
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="map-info-title" (click)="$event.stopPropagation()">
       <h2 id="map-info-title">{{ item.name }}</h2>
-      <p class="hint">{{ item.author }} · {{ item.category }}</p>
+      <app-author-credit
+        [item]="item"
+        [showCategory]="true"
+        (profile)="openProfile($event)"
+        (more)="moreFromAuthor($event)"
+      />
       <p class="hint">Maps on this tab come from GameBanana Realms.</p>
       @if (packLabel(item.id); as pack) {
         <p class="hint pack-hint">{{ pack }}</p>
@@ -211,3 +317,21 @@
     </div>
   </div>
 }
+
+<app-apply-selected-dialog
+  [open]="applySelectedOpen()"
+  heading="Apply selected maps"
+  [rows]="applySelectedRows()"
+  [applying]="applySelectedRunning()"
+  [status]="applySelectedStatus()"
+  (apply)="runApplySelected($event)"
+  (closed)="closeApplySelected()"
+/>
+
+<app-add-mod-dialog
+  [open]="addOpen()"
+  [mode]="addMode()"
+  kind="maps"
+  (picked)="confirmAdd($event)"
+  (closed)="closeAdd()"
+/>
