@@ -348,9 +348,16 @@ public static class ModApplyService
         try
         {
             var remaining = (loadout.Skins ?? []).Where(entry => entry.ModId != skinId).ToList();
-            var total = 1 + remaining.Count;
+            var self = (loadout.Skins ?? []).First(entry => entry.ModId == skinId);
+            var touched = SkinSwfRelatives(blocked.GameRoot!, skinId, self.Swfs);
+            var redo = touched.Count == 0
+                ? remaining
+                : remaining.Where(entry => SharesSwf(blocked.GameRoot!, entry, touched)).ToList();
+            var total = 1 + redo.Count;
             ApplyProgress.Begin("skins", skinId, "reset", total);
-            var restored = VanillaReset.RestoreSwf(blocked.GameRoot!, includeSoundSwf: false);
+            var restored = touched.Count > 0
+                ? VanillaReset.RestoreListedSwf(blocked.GameRoot!, touched)
+                : VanillaReset.RestoreSwf(blocked.GameRoot!, includeSoundSwf: false);
             if (restored == 0)
             {
                 return (false, "Nothing to restore in SWF. Apply a skin first so vanilla files are backed up.", null);
@@ -358,7 +365,7 @@ public static class ModApplyService
 
             LoadoutStore.RemoveSkin(skinId);
             ApplyProgress.Report(1, total);
-            if (remaining.Count > 0)
+            if (redo.Count > 0)
             {
                 try
                 {
@@ -378,7 +385,7 @@ public static class ModApplyService
                 }
 
                 var done = 1;
-                foreach (var entry in remaining)
+                foreach (var entry in redo)
                 {
                     var result = ApplySkin(blocked.GameRoot!, entry.ModId, tools.JavaPath, tools.JarPath, downloadIfMissing: false);
                     if (!result.Ok)
@@ -391,9 +398,9 @@ public static class ModApplyService
                 }
             }
 
-            var extra = remaining.Count == 0
-                ? " No other skins left."
-                : " Reapplied " + remaining.Count + " other skin(s).";
+            var extra = redo.Count == 0
+                ? " No other skins shared those files."
+                : " Reapplied " + redo.Count + " other skin(s) on the same SWF(s).";
             return (true, null, new ApplyAttemptDto(true, "Removed this skin." + extra));
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
@@ -852,9 +859,14 @@ public static class ModApplyService
             {
                 reason += " Skipped " + skipped + " missing or mismatched.";
             }
+
+            if (pack.SkippedScripts > 0)
+            {
+                reason += " Skipped " + pack.SkippedScripts + " extra script(s).";
+            }
             try
             {
-                LoadoutStore.RecordSkinApplied(skinId);
+                LoadoutStore.RecordSkinApplied(skinId, jobs.Select(job => job.Relative).ToList());
             }
             catch (IOException ex)
             {
@@ -949,6 +961,66 @@ public static class ModApplyService
     private static bool LegendEquals(string? left, string right)
     {
         return left is not null && left.Equals(right, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlyList<string> SkinSwfRelatives(
+        string gameRoot,
+        int skinId,
+        IReadOnlyList<string>? stored)
+    {
+        if (stored is { Count: > 0 })
+        {
+            return stored;
+        }
+
+        var folder = AppPaths.SkinDownloadsFolder(skinId);
+        if (!Directory.Exists(folder))
+        {
+            return [];
+        }
+
+        var (bmodPaths, _, locateError) = SkinBmodLocator.Locate(folder);
+        if (locateError is not null || bmodPaths.Count == 0)
+        {
+            return [];
+        }
+
+        var (pack, _) = BmodManifest.TryParseMany(bmodPaths);
+        if (pack is null)
+        {
+            return [];
+        }
+
+        var relatives = new List<string>();
+        foreach (var swf in pack.Swfs)
+        {
+            var relative = VanillaBackup.FindSwfRelative(gameRoot, swf.FileName);
+            if (relative is not null && !relatives.Contains(relative, StringComparer.OrdinalIgnoreCase))
+            {
+                relatives.Add(relative);
+            }
+        }
+
+        return relatives;
+    }
+
+    private static bool SharesSwf(string gameRoot, LoadoutModDto entry, IReadOnlyList<string> touched)
+    {
+        var theirs = SkinSwfRelatives(gameRoot, entry.ModId, entry.Swfs);
+        if (theirs.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (var swf in theirs)
+        {
+            if (touched.Contains(swf, StringComparer.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void RestoreSnapshots(List<(string GameFile, string Snapshot)> snapshots)

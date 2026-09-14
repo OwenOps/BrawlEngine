@@ -48,6 +48,36 @@ public static class VanillaReset
         return RestoreSwf(gameRoot, includeSoundSwf, soundSwfOnly: false);
     }
 
+    public static int RestoreListedSwf(string gameRoot, IReadOnlyList<string> relatives)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(gameRoot);
+        var restored = 0;
+        foreach (var relative in relatives)
+        {
+            if (string.IsNullOrWhiteSpace(relative)
+                || SoundSwfApplier.IsSoundSwfName(Path.GetFileName(relative)))
+            {
+                continue;
+            }
+
+            var (gameFile, backupFile) = VanillaBackup.SwfPaths(gameRoot, relative);
+            if (!File.Exists(backupFile))
+            {
+                continue;
+            }
+            var destDir = Path.GetDirectoryName(gameFile);
+            if (!string.IsNullOrEmpty(destDir))
+            {
+                Directory.CreateDirectory(destDir);
+            }
+
+            File.Copy(backupFile, gameFile, overwrite: true);
+            restored++;
+        }
+
+        return restored;
+    }
+
     private static int RestoreSwf(string gameRoot, bool includeSoundSwf, bool soundSwfOnly)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gameRoot);

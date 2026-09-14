@@ -10,6 +10,7 @@ public static class LoadoutStore
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
     };
 
     public static LoadoutDto Load()
@@ -69,10 +70,38 @@ public static class LoadoutStore
         Save(current with { Maps = current.Maps.Where(entry => entry.ModId != modId).ToList() });
     }
 
+    public static void RemoveMusic(int soundId)
+    {
+        var current = Load();
+        Save(current with { Music = current.Music.Where(entry => entry.ModId != soundId).ToList() });
+    }
+
+    public static LoadoutDto RecordSkinApplied(int skinId, IReadOnlyList<string>? swfs = null)
+    {
+        var current = Load();
+        var skins = (current.Skins ?? []).Where(entry => entry.ModId != skinId).ToList();
+        skins.Add(new LoadoutModDto(skinId, swfs is { Count: > 0 } ? swfs : null));
+        var next = current with { Skins = skins };
+        Save(next);
+        return next;
+    }
+
+    public static void RemoveSkin(int skinId)
+    {
+        var current = Load();
+        Save(current with { Skins = (current.Skins ?? []).Where(entry => entry.ModId != skinId).ToList() });
+    }
+
     public static void ClearMaps()
     {
         var current = Load();
         Save(current with { Maps = [] });
+    }
+
+    public static void ClearSkins()
+    {
+        var current = Load();
+        Save(current with { Skins = [] });
     }
 
     public static void Clear()
@@ -91,6 +120,7 @@ public static class LoadoutStore
         {
             Maps = loadout.Maps ?? [],
             Music = loadout.Music ?? [],
+            Skins = loadout.Skins ?? [],
         };
     }
 }
