@@ -1,11 +1,13 @@
 using BrawlEngine.Host.Domain.Models;
 using BrawlEngine.Host.Infrastructure.Apply;
+using BrawlEngine.Host.Infrastructure.Ffdec;
 using BrawlEngine.Host.Infrastructure.GameBanana;
 using BrawlEngine.Host.Infrastructure.Processes;
 using BrawlEngine.Host.Infrastructure.Steam;
 using BrawlEngine.Host.Infrastructure.Storage;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using Photino.NET;
 
@@ -13,6 +15,8 @@ namespace BrawlEngine.Host.Presentation.Ipc;
 
 public static class IpcRouter
 {
+    private const string MadeBy = "Owen";
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -48,25 +52,37 @@ public static class IpcRouter
             "game.running" => ApplyGuard(request),
             "catalog.maps" => CatalogMaps(request),
             "catalog.sounds" => CatalogSounds(request),
-            "catalog.skins" => CatalogSkins(request),
+            "catalog.skins" => CatalogSkins(window, request),
             "catalog.byIds" => CatalogByIds(request),
             "browser.open" => OpenUrl(request),
             "folder.open" => OpenFolder(request),
             "mod.download" => DownloadMod(window, request),
             "sound.download" => DownloadSound(window, request),
             "skin.download" => DownloadSkin(window, request),
+            "skins.tools" => SkinsTools(request),
+            "skins.tools.pick" => SkinsToolsPick(request),
+            "skin.apply" => WithApplyProgress(window, () => ApplySkin(request)),
+            "skin.reset" => WithApplyProgress(window, () => ResetSkin(request)),
             "downloads.cancel" => CancelDownload(request),
             "downloads.list" => ListDownloads(request),
+            "downloads.summary" => SummaryDownloads(request),
             "downloads.delete" => DeleteDownload(request),
             "downloads.open" => OpenDownloads(request),
+            "downloads.pick" => PickDownloads(request),
+            "downloads.reset" => ResetDownloads(request),
+            "downloads.import" => ImportDownload(request),
             "mod.mapNames" => MapNames(request),
-            "mod.apply" => ApplyMod(request),
-            "mod.reset" => ResetMap(request),
-            "music.apply" => ApplySound(request),
-            "music.reset" => ResetSound(request),
+            "mod.apply" => WithApplyProgress(window, () => ApplyMod(request)),
+            "mod.reset" => WithApplyProgress(window, () => ResetMap(request)),
+            "music.apply" => WithApplyProgress(window, () => ApplySound(request)),
+            "music.reset" => WithApplyProgress(window, () => ResetSound(request)),
             "music.tracks" => MusicTracks(request),
-            "music.replace" => ReplaceTrack(request),
+            "music.replace" => WithApplyProgress(window, () => ReplaceTrack(request)),
             "loadout.get" => Loadout(request),
+            "likes.get" => LikesGet(request),
+            "likes.toggle" => LikesToggle(request),
+            "crashes.get" => CrashesGet(request),
+            "crashes.toggle" => CrashesToggle(request),
             "mods.resetAll" => ResetAll(request),
             "mods.rankedSafe" => RankedSafe(request),
             "mods.reapply" => Reapply(request),
@@ -136,8 +152,19 @@ public static class IpcRouter
             Id = request.Id,
             Type = "pong",
             Ok = true,
-            Payload = JsonSerializer.SerializeToElement(new { app = "BrawlEngine" }, JsonOptions),
+            Payload = JsonSerializer.SerializeToElement(new AppInfoDto(MadeBy, AppVersion()), JsonOptions),
         };
+    }
+
+    private static string AppVersion()
+    {
+        var raw = typeof(IpcRouter).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion
+            ?? typeof(IpcRouter).Assembly.GetName().Version?.ToString(3)
+            ?? "";
+        var plus = raw.IndexOf('+');
+        return plus >= 0 ? raw[..plus] : raw;
     }
 
     private static IpcEnvelope GameLocation(IpcEnvelope request, GameLocationDto location)
@@ -177,6 +204,45 @@ public static class IpcRouter
         return GameLocation(request, location);
     }
 
+    private static IpcEnvelope SkinsTools(IpcEnvelope request)
+    {
+        try
+        {
+            FfdecLibFetch.Ensure();
+        }
+        catch (Exception ex) when (
+            ex is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException
+            or UnauthorizedAccessException)
+        {
+            var failed = FfdecLocator.Resolve();
+            var message = "Could not download ffdec_lib.jar. Check your connection and Retry.";
+            if (string.IsNullOrEmpty(failed.JavaPath) && string.IsNullOrEmpty(failed.JarPath))
+            {
+                message = failed.Error ?? message;
+            }
+
+            return ToolsReply(request, failed with { Error = message });
+        }
+
+        return ToolsReply(request, FfdecLocator.Resolve());
+    }
+
+    private static IpcEnvelope SkinsToolsPick(IpcEnvelope request)
+    {
+        return ToolsReply(request, FfdecLocator.Pick(ReadString(request, "kind")));
+    }
+
+    private static IpcEnvelope ToolsReply(IpcEnvelope request, FfdecToolsDto tools)
+    {
+        return new IpcEnvelope
+        {
+            Id = request.Id,
+            Type = request.Type,
+            Ok = true,
+            Payload = JsonSerializer.SerializeToElement(tools, JsonOptions),
+        };
+    }
+
     private static IpcEnvelope ApplyGuard(IpcEnvelope request)
     {
         var status = BrawlhallaProcess.Check();
@@ -191,10 +257,11 @@ public static class IpcRouter
 
     private static IpcEnvelope CatalogSounds(IpcEnvelope request)
     {
-        var (apiPage, query, sort, categoryId) = ReadCatalog(request);
+        var (apiPage, query, sort, categoryId, authorId) = ReadCatalog(request);
         try
         {
-            var page = SoundCatalogClient.ListAsync(apiPage, query, sort, categoryId).GetAwaiter().GetResult();
+            var page = SoundCatalogClient.ListAsync(apiPage, query, sort, categoryId, authorId).GetAwaiter().GetResult();
+            RememberCatalog("sounds", page.Items);
             return new IpcEnvelope
             {
                 Id = request.Id,
@@ -209,12 +276,15 @@ public static class IpcRouter
         }
     }
 
-    private static IpcEnvelope CatalogSkins(IpcEnvelope request)
+    private static IpcEnvelope CatalogSkins(PhotinoWindow window, IpcEnvelope request)
     {
-        var (apiPage, query, sort, _) = ReadCatalog(request);
+        var (apiPage, query, sort, categoryId, authorId) = ReadCatalog(request);
         try
         {
-            var page = SkinCatalogClient.ListAsync(apiPage, query, sort).GetAwaiter().GetResult();
+            var page = SkinCatalogClient.ListAsync(apiPage, query, sort, categoryId, authorId).GetAwaiter().GetResult();
+            page = SkinTarget.ApplyCached(page);
+            RememberCatalog("skins", page.Items);
+            _ = Task.Run(() => PushSkinTargets(window, page.Items));
             return new IpcEnvelope
             {
                 Id = request.Id,
@@ -227,6 +297,32 @@ public static class IpcRouter
         {
             return CatalogLoadFailed(request, ex);
         }
+    }
+
+    private static void PushSkinTargets(PhotinoWindow window, IReadOnlyList<CatalogItemDto> items)
+    {
+        IReadOnlyList<CatalogItemDto> filled = items;
+        try
+        {
+            filled = SkinTarget.AttachAsync(items, CancellationToken.None).GetAwaiter().GetResult();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            // Cards are already on screen; Needs/Default can stay blank.
+        }
+
+        RememberCatalog("skins", filled);
+        var rows = filled
+            .Select(item => new SkinTargetRowDto(item.Id, item.SkinTarget, item.Description))
+            .ToList();
+        var envelope = new IpcEnvelope
+        {
+            Id = "",
+            Type = "catalog.skinTargets",
+            Ok = true,
+            Payload = JsonSerializer.SerializeToElement(new { items = rows }, JsonOptions),
+        };
+        window.SendWebMessage(JsonSerializer.Serialize(envelope, JsonOptions));
     }
 
     private static IpcEnvelope CatalogByIds(IpcEnvelope request)
@@ -235,12 +331,14 @@ public static class IpcRouter
         var itemType = kind == "sounds" ? GameBananaIds.SoundItemType : "Mod";
         var defaultCategory = kind == "sounds"
             ? "Sounds"
-            : GameBananaIds.RealmsCategoryName;
+            : kind == "skins"
+                ? GameBananaIds.SkinsCategoryName
+                : GameBananaIds.RealmsCategoryName;
         var ids = ReadIntList(request, "ids");
         try
         {
             var items = CatalogProfileClient
-                .GetAsync(itemType, ids, defaultCategory)
+                .GetAsync(kind, itemType, ids, defaultCategory)
                 .GetAwaiter()
                 .GetResult();
             var page = new CatalogPageDto(items, 1, 2, true, items.Count, items.Count);
@@ -382,6 +480,99 @@ public static class IpcRouter
         };
     }
 
+    private static IpcEnvelope SummaryDownloads(IpcEnvelope request)
+    {
+        var summary = DownloadInventory.Summary();
+        return new IpcEnvelope
+        {
+            Id = request.Id,
+            Type = request.Type,
+            Ok = true,
+            Payload = JsonSerializer.SerializeToElement(summary, JsonOptions),
+        };
+    }
+
+    private static IpcEnvelope PickDownloads(IpcEnvelope request)
+    {
+        var location = DownloadsLocator.PickFolder();
+        var ok = string.IsNullOrEmpty(location.Error);
+        return new IpcEnvelope
+        {
+            Id = request.Id,
+            Type = request.Type,
+            Ok = ok,
+            Error = location.Error,
+            Payload = JsonSerializer.SerializeToElement(location, JsonOptions),
+        };
+    }
+
+    private static IpcEnvelope ResetDownloads(IpcEnvelope request)
+    {
+        var location = DownloadsLocator.ResetToDefault();
+        var ok = string.IsNullOrEmpty(location.Error);
+        return new IpcEnvelope
+        {
+            Id = request.Id,
+            Type = request.Type,
+            Ok = ok,
+            Error = location.Error,
+            Payload = JsonSerializer.SerializeToElement(location, JsonOptions),
+        };
+    }
+
+    private static IpcEnvelope ImportDownload(IpcEnvelope request)
+    {
+        var kind = ReadString(request, "kind");
+        if (kind != "maps" && kind != "sounds" && kind != "skins")
+        {
+            kind = "maps";
+        }
+
+        var id = ReadId(request);
+        if (id <= 0)
+        {
+            id = GameBananaIds.ParseItemId(ReadString(request, "url"));
+        }
+
+        if (id <= 0)
+        {
+            return MissingId(request);
+        }
+
+        try
+        {
+            var result = DownloadImport.Import(kind, id);
+            if (result.Error is not null)
+            {
+                return new IpcEnvelope
+                {
+                    Id = request.Id,
+                    Type = request.Type,
+                    Ok = false,
+                    Error = result.Error,
+                };
+            }
+
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = true,
+                Payload = JsonSerializer.SerializeToElement(result, JsonOptions),
+            };
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = false,
+                Error = "Could not copy those files into the mods folder.",
+            };
+        }
+    }
+
     /// <summary>Lists the mapArt base names inside a downloaded pack, so the UI can show which maps it contains.</summary>
     private static IpcEnvelope MapNames(IpcEnvelope request)
     {
@@ -446,7 +637,35 @@ public static class IpcRouter
             return MissingId(request);
         }
 
-        var (ok, error, result) = ModApplyService.TryApplySound(id, category: ReadString(request, "category"));
+        var target = ReadString(request, "target");
+        var (ok, error, result) = ModApplyService.TryApplySound(
+            id,
+            category: ReadString(request, "category"),
+            targetFileName: string.IsNullOrWhiteSpace(target) ? null : target);
+        return Attempt(request, ok, error, result);
+    }
+
+    private static IpcEnvelope ApplySkin(IpcEnvelope request)
+    {
+        var id = ReadId(request);
+        if (id <= 0)
+        {
+            return MissingId(request);
+        }
+
+        var (ok, error, result) = ModApplyService.TryApplySkin(id);
+        return Attempt(request, ok, error, result);
+    }
+
+    private static IpcEnvelope ResetSkin(IpcEnvelope request)
+    {
+        var id = ReadId(request);
+        if (id <= 0)
+        {
+            return MissingId(request);
+        }
+
+        var (ok, error, result) = ModApplyService.TryResetSkin(id);
         return Attempt(request, ok, error, result);
     }
 
@@ -521,15 +740,16 @@ public static class IpcRouter
         return Attempt(request, ok, error, result);
     }
 
-    private static (int Page, string Query, string Sort, int CategoryId) ReadCatalog(IpcEnvelope request)
+    private static (int Page, string Query, string Sort, int CategoryId, int AuthorId) ReadCatalog(IpcEnvelope request)
     {
         var apiPage = 1;
         var query = "";
         var sort = "newest";
         var categoryId = 0;
+        var authorId = 0;
         if (request.Payload is not { } payload || payload.ValueKind != JsonValueKind.Object)
         {
-            return (apiPage, query, sort, categoryId);
+            return (apiPage, query, sort, categoryId, authorId);
         }
 
         if (payload.TryGetProperty("page", out var pageEl)
@@ -560,7 +780,14 @@ public static class IpcRouter
             categoryId = catId;
         }
 
-        return (apiPage, query, sort, categoryId);
+        if (payload.TryGetProperty("authorId", out var authorEl)
+            && authorEl.TryGetInt32(out var parsedAuthor)
+            && parsedAuthor > 0)
+        {
+            authorId = parsedAuthor;
+        }
+
+        return (apiPage, query, sort, categoryId, authorId);
     }
 
     private static IpcEnvelope OpenUrl(IpcEnvelope request)
@@ -568,14 +795,14 @@ public static class IpcRouter
         var url = ReadString(request, "url");
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)
             || uri.Scheme != Uri.UriSchemeHttps
-            || !IsGameBananaHost(uri.Host))
+            || !IsAllowedBrowserUrl(uri))
         {
             return new IpcEnvelope
             {
                 Id = request.Id,
                 Type = request.Type,
                 Ok = false,
-                Error = "Only https GameBanana links can be opened.",
+                Error = "Only https GameBanana, Google Images, or the BrawlEngine GitHub repo can be opened.",
             };
         }
 
@@ -636,18 +863,15 @@ public static class IpcRouter
             };
         }
 
-        var root = Path.GetFullPath(AppPaths.Root)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-            + Path.DirectorySeparatorChar;
-        if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(full, Path.GetFullPath(AppPaths.Root), StringComparison.OrdinalIgnoreCase))
+        if (!IsInsideAppFolder(full, AppPaths.Root)
+            && !IsInsideAppFolder(full, AppPaths.DownloadsRoot))
         {
             return new IpcEnvelope
             {
                 Id = request.Id,
                 Type = request.Type,
                 Ok = false,
-                Error = "Can only open folders inside BrawlEngine data.",
+                Error = "Can only open folders inside BrawlEngine data or the mods folder.",
             };
         }
 
@@ -707,6 +931,49 @@ public static class IpcRouter
         };
     }
 
+    private static bool IsInsideAppFolder(string full, string root)
+    {
+        string rootFull;
+        try
+        {
+            rootFull = Path.GetFullPath(root);
+        }
+        catch (Exception ex) when (ex is ArgumentException or PathTooLongException or NotSupportedException)
+        {
+            return false;
+        }
+
+        var prefix = rootFull.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        return full.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(full, rootFull, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IpcEnvelope WithApplyProgress(PhotinoWindow window, Func<IpcEnvelope> run)
+    {
+        ApplyProgress.Push = progress => PushApplyProgress(window, progress);
+        try
+        {
+            return run();
+        }
+        finally
+        {
+            ApplyProgress.Clear();
+        }
+    }
+
+    private static void PushApplyProgress(PhotinoWindow window, ApplyProgressDto progress)
+    {
+        var envelope = new IpcEnvelope
+        {
+            Id = "",
+            Type = "apply.progress",
+            Ok = true,
+            Payload = JsonSerializer.SerializeToElement(progress, JsonOptions),
+        };
+        window.SendWebMessage(JsonSerializer.Serialize(envelope, JsonOptions));
+    }
+
     /// <summary>Sends an unsolicited "download.progress" message (empty Id: no request is waiting on it).</summary>
     private static void PushProgress(PhotinoWindow window, DownloadProgressDto progress)
     {
@@ -724,6 +991,48 @@ public static class IpcRouter
     {
         return host.Equals("gamebanana.com", StringComparison.OrdinalIgnoreCase)
             || host.Equals("www.gamebanana.com", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsAllowedBrowserUrl(Uri uri)
+    {
+        if (IsGameBananaHost(uri.Host))
+        {
+            return true;
+        }
+
+        if (IsSourceRepo(uri))
+        {
+            return true;
+        }
+
+        var google = uri.Host.Equals("google.com", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.Equals("www.google.com", StringComparison.OrdinalIgnoreCase);
+        if (!google)
+        {
+            return false;
+        }
+
+        return uri.AbsolutePath.Equals("/search", StringComparison.OrdinalIgnoreCase)
+            && uri.Query.Contains("tbm=isch", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSourceRepo(Uri uri)
+    {
+        var github = uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.Equals("www.github.com", StringComparison.OrdinalIgnoreCase);
+        if (!github)
+        {
+            return false;
+        }
+
+        var path = uri.AbsolutePath.TrimEnd('/');
+        if (path.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
+        {
+            path = path[..^4];
+        }
+
+        return path.Equals("/OwenOps/BrawlEngine", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/OwenOps/BrawlEngine/", StringComparison.OrdinalIgnoreCase);
     }
 
     private static int ReadId(IpcEnvelope request)
@@ -750,12 +1059,21 @@ public static class IpcRouter
         };
     }
 
+    private static void RememberCatalog(string kind, IReadOnlyList<CatalogItemDto> items)
+    {
+        foreach (var item in items)
+        {
+            CatalogLibrary.Remember(kind, item);
+        }
+    }
+
     private static IpcEnvelope CatalogMaps(IpcEnvelope request)
     {
-        var (apiPage, query, sort, _) = ReadCatalog(request);
+        var (apiPage, query, sort, _, authorId) = ReadCatalog(request);
         try
         {
-            var page = RealmCatalogClient.ListAsync(apiPage, query, sort).GetAwaiter().GetResult();
+            var page = RealmCatalogClient.ListAsync(apiPage, query, sort, authorId).GetAwaiter().GetResult();
+            RememberCatalog("maps", page.Items);
             return new IpcEnvelope
             {
                 Id = request.Id,
@@ -811,6 +1129,97 @@ public static class IpcRouter
             Type = request.Type,
             Ok = true,
             Payload = JsonSerializer.SerializeToElement(LoadoutStore.Load(), JsonOptions),
+        };
+    }
+
+    private static IpcEnvelope LikesGet(IpcEnvelope request)
+    {
+        return new IpcEnvelope
+        {
+            Id = request.Id,
+            Type = request.Type,
+            Ok = true,
+            Payload = JsonSerializer.SerializeToElement(LikeStore.Load(), JsonOptions),
+        };
+    }
+
+    private static IpcEnvelope LikesToggle(IpcEnvelope request)
+    {
+        var kind = ReadString(request, "kind");
+        var id = ReadId(request);
+        if (id <= 0 || kind is not ("maps" or "sounds" or "skins"))
+        {
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = false,
+                Error = "Missing like target.",
+            };
+        }
+
+        var (likes, liked) = LikeStore.Toggle(kind, id);
+        if (liked
+            && request.Payload is { } payload
+            && payload.ValueKind == JsonValueKind.Object
+            && payload.TryGetProperty("item", out var itemEl))
+        {
+            try
+            {
+                var item = itemEl.Deserialize<CatalogItemDto>(JsonOptions);
+                if (item is not null)
+                {
+                    CatalogLibrary.RememberCard(kind, item);
+                }
+            }
+            catch (JsonException)
+            {
+            }
+        }
+
+        return new IpcEnvelope
+        {
+            Id = request.Id,
+            Type = request.Type,
+            Ok = true,
+            Payload = JsonSerializer.SerializeToElement(likes, JsonOptions),
+        };
+    }
+
+    private static IpcEnvelope CrashesGet(IpcEnvelope request)
+    {
+        return new IpcEnvelope
+        {
+            Id = request.Id,
+            Type = request.Type,
+            Ok = true,
+            Payload = JsonSerializer.SerializeToElement(CrashStore.Load(), JsonOptions),
+        };
+    }
+
+    private static IpcEnvelope CrashesToggle(IpcEnvelope request)
+    {
+        var kind = ReadString(request, "kind");
+        var id = ReadId(request);
+        if (id <= 0 || kind is not ("maps" or "sounds" or "skins"))
+        {
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = false,
+                Error = "Missing crash tag target.",
+            };
+        }
+
+        var note = ReadString(request, "note");
+        var crashes = CrashStore.Toggle(kind, id, string.IsNullOrWhiteSpace(note) ? null : note);
+        return new IpcEnvelope
+        {
+            Id = request.Id,
+            Type = request.Type,
+            Ok = true,
+            Payload = JsonSerializer.SerializeToElement(crashes, JsonOptions),
         };
     }
 

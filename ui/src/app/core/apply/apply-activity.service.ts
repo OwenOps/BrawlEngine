@@ -39,6 +39,9 @@ export class ApplyActivityService {
 
   labelFor(kind: ApplyWorkKind, id: number, fallback: 'apply' | 'reset' = 'apply'): string {
     const progress = this.items().get(key(kind, id));
+    if (progress?.name) {
+      return progress.name;
+    }
     const verb = progress?.action === 'reset' || fallback === 'reset' ? 'Resetting' : 'Applying';
     const percent = this.percentFor(kind, id);
     return percent === null ? verb + '…' : verb + ' ' + percent + '%';

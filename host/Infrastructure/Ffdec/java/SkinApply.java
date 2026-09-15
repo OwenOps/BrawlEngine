@@ -117,12 +117,16 @@ public class SkinApply {
                 readSwf(gameFile), packs, keepsPackedChildIds(gameFile.getName()));
         var applied = new ArrayList<String>();
         var skipped = 0;
+        var index = 0;
         for (var name : names) {
             if (apply.replaceSprite(name)) {
                 applied.add(name);
             } else {
                 skipped++;
             }
+
+            index++;
+            System.out.println("Progress " + index + "/" + names.size());
         }
 
         apply.refreshLookups();
@@ -140,13 +144,13 @@ public class SkinApply {
 
     /**
      * Replaces one game sprite with the art of the first pack that carries that name.
-     * Returns false when the pack's animation timeline does not match the game, so we
-     * leave the vanilla sprite rather than write ids the native Bones/SFX code rejects.
+     * Returns false when the game or pack has no such sprite, or when the pack's
+     * animation timeline does not match the game, so we leave the vanilla sprite.
      */
     private boolean replaceSprite(String name) throws Exception {
         var target = findNamed(game, name);
         if (target == null) {
-            throw new ApplyError("Game SWF has no sprite named " + name);
+            return false;
         }
 
         for (var pack : packs) {
@@ -162,7 +166,7 @@ public class SkinApply {
             }
         }
 
-        throw new ApplyError("Pack has no sprite named " + name);
+        return false;
     }
 
     /**
@@ -419,7 +423,7 @@ public class SkinApply {
     private void replacePalette(String className, List<Integer> colors) throws ApplyError {
         var script = scriptFor(className);
         if (script == null) {
-            throw new ApplyError("Game SWF has no colour script named " + className);
+            return;
         }
 
         var abc = script.abc;

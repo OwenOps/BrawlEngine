@@ -30,7 +30,8 @@ public static class FfdecSkinApplier
         string outSwfPath,
         IReadOnlyList<string> exportNames,
         IReadOnlyList<BmodColorScript> colorScripts,
-        out int replaced)
+        out int replaced,
+        Action<int, int>? onProgress = null)
     {
         replaced = 0;
         var helper = HelperPath();
@@ -107,9 +108,15 @@ public static class FfdecSkinApplier
             var output = new StringBuilder();
             process.OutputDataReceived += (_, e) =>
             {
-                if (e.Data is not null)
+                if (e.Data is null)
                 {
-                    output.AppendLine(e.Data);
+                    return;
+                }
+
+                output.AppendLine(e.Data);
+                if (TryReadSpriteProgress(e.Data, out var done, out var total))
+                {
+                    onProgress?.Invoke(done, total);
                 }
             };
             process.ErrorDataReceived += (_, e) =>
@@ -167,6 +174,29 @@ public static class FfdecSkinApplier
                 }
             }
         }
+    }
+
+    private static bool TryReadSpriteProgress(string line, out int done, out int total)
+    {
+        done = 0;
+        total = 0;
+        line = line.Trim();
+        const string prefix = "Progress ";
+        if (!line.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var slash = line.IndexOf('/', prefix.Length);
+        if (slash < 0)
+        {
+            return false;
+        }
+
+        return int.TryParse(line.AsSpan(prefix.Length, slash - prefix.Length), out done)
+            && int.TryParse(line.AsSpan(slash + 1), out total)
+            && done > 0
+            && total > 0;
     }
 
     private static int ReadReplacedCount(string output, int listed)

@@ -5,6 +5,9 @@ export interface ApplyAttempt {
 
 export type ApplyWorkKind = 'maps' | 'sounds' | 'skins';
 
+/** Host ApplyProgress.CustomReplaceId — custom audio replace, not a catalog mod. */
+export const CUSTOM_AUDIO_PROGRESS_ID = 2147483647;
+
 export interface ApplyProgress {
   kind: ApplyWorkKind;
   id: number;
