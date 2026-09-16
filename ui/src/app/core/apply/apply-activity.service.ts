@@ -22,6 +22,9 @@ export class ApplyActivityService {
         return next;
       });
     });
+    this.ipc.on(IPC_MESSAGE.APPLY_DONE, () => {
+      this.items.set(new Map());
+    });
   }
 
   isActive(kind: ApplyWorkKind, id: number): boolean {

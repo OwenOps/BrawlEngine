@@ -23,6 +23,8 @@ public static class IpcRouter
         PropertyNameCaseInsensitive = true,
     };
 
+    private static readonly object ApplyLock = new();
+
     public static void Handle(PhotinoWindow window, string raw)
     {
         IpcEnvelope request;
@@ -61,8 +63,8 @@ public static class IpcRouter
             "skin.download" => DownloadSkin(window, request),
             "skins.tools" => SkinsTools(request),
             "skins.tools.pick" => SkinsToolsPick(request),
-            "skin.apply" => WithApplyProgress(window, () => ApplySkin(request)),
-            "skin.reset" => WithApplyProgress(window, () => ResetSkin(request)),
+            "skin.apply" => WhenGameClosed(window, request, () => ApplySkin(request)),
+            "skin.reset" => WhenGameClosed(window, request, () => ResetSkin(request)),
             "downloads.cancel" => CancelDownload(request),
             "downloads.list" => ListDownloads(request),
             "downloads.summary" => SummaryDownloads(request),
@@ -72,23 +74,25 @@ public static class IpcRouter
             "downloads.reset" => ResetDownloads(request),
             "downloads.import" => ImportDownload(request),
             "mod.mapNames" => MapNames(request),
-            "mod.apply" => WithApplyProgress(window, () => ApplyMod(request)),
-            "mod.reset" => WithApplyProgress(window, () => ResetMap(request)),
-            "music.apply" => WithApplyProgress(window, () => ApplySound(request)),
-            "music.reset" => WithApplyProgress(window, () => ResetSound(request)),
+            "mod.apply" => WhenGameClosed(window, request, () => ApplyMod(request)),
+            "mod.reset" => WhenGameClosed(window, request, () => ResetMap(request)),
+            "music.apply" => WhenGameClosed(window, request, () => ApplySound(request)),
+            "music.reset" => WhenGameClosed(window, request, () => ResetSound(request)),
             "music.tracks" => MusicTracks(request),
-            "music.replace" => WithApplyProgress(window, () => ReplaceTrack(request)),
+            "music.replace" => ReplaceTrack(window, request),
+            "music.restore" => WhenGameClosed(window, request, () => RestoreTrack(request)),
+            "music.restoreAll" => WhenGameClosed(window, request, () => RestoreAllAudio(request)),
             "loadout.get" => Loadout(request),
             "likes.get" => LikesGet(request),
             "likes.toggle" => LikesToggle(request),
             "crashes.get" => CrashesGet(request),
             "crashes.toggle" => CrashesToggle(request),
-            "mods.resetAll" => ResetAll(request),
-            "mods.rankedSafe" => RankedSafe(request),
-            "mods.reapply" => Reapply(request),
+            "mods.resetAll" => WhenGameClosed(window, request, () => ResetAll(request)),
+            "mods.rankedSafe" => WhenGameClosed(window, request, () => RankedSafe(request)),
+            "mods.reapply" => WhenGameClosed(window, request, () => Reapply(request)),
             "configs.list" => ConfigsList(request),
             "configs.save" => ConfigsSave(request),
-            "configs.load" => ConfigsLoad(request),
+            "configs.load" => WhenGameClosed(window, request, () => ConfigsLoad(request)),
             "configs.delete" => ConfigsDelete(request),
             _ => new IpcEnvelope
             {
@@ -246,12 +250,26 @@ public static class IpcRouter
     private static IpcEnvelope ApplyGuard(IpcEnvelope request)
     {
         var status = BrawlhallaProcess.Check();
+        var pending = PendingGameWrites.Count;
+        string? message = status.Message;
+        if (status.Running && pending > 0)
+        {
+            message = pending == 1
+                ? "1 change will apply when Brawlhalla closes."
+                : pending + " changes will apply when Brawlhalla closes.";
+        }
+        else if (status.Running)
+        {
+            message = "Brawlhalla is open. Apply waits until it closes.";
+        }
+
+        var payload = status with { Message = message, Pending = pending };
         return new IpcEnvelope
         {
             Id = request.Id,
             Type = request.Type,
             Ok = true,
-            Payload = JsonSerializer.SerializeToElement(status, JsonOptions),
+            Payload = JsonSerializer.SerializeToElement(payload, JsonOptions),
         };
     }
 
@@ -695,17 +713,17 @@ public static class IpcRouter
             };
         }
 
-        var tracks = Mp3Applier.ListTracks(mp3.Path);
+        var listed = Mp3Applier.ListTracks(mp3.Path);
         return new IpcEnvelope
         {
             Id = request.Id,
             Type = request.Type,
             Ok = true,
-            Payload = JsonSerializer.SerializeToElement(new { tracks }, JsonOptions),
+            Payload = JsonSerializer.SerializeToElement(listed, JsonOptions),
         };
     }
 
-    private static IpcEnvelope ReplaceTrack(IpcEnvelope request)
+    private static IpcEnvelope ReplaceTrack(PhotinoWindow window, IpcEnvelope request)
     {
         var target = "";
         var url = "";
@@ -734,9 +752,90 @@ public static class IpcRouter
             };
         }
 
-        var (ok, error, result) = ModApplyService.TryReplaceTrack(
-            target,
-            string.IsNullOrWhiteSpace(url) ? null : url);
+        string? picked = null;
+        var downloaded = false;
+        if (!string.IsNullOrWhiteSpace(url))
+        {
+            try
+            {
+                picked = Mp3UrlFetch.DownloadToTempAsync(url).GetAwaiter().GetResult();
+                downloaded = true;
+            }
+            catch (Exception ex) when (
+                ex is HttpRequestException or TaskCanceledException or InvalidOperationException or IOException)
+            {
+                return new IpcEnvelope
+                {
+                    Id = request.Id,
+                    Type = request.Type,
+                    Ok = false,
+                    Error = "Download failed: " + ex.Message,
+                };
+            }
+        }
+        else
+        {
+            picked = Mp3FilePicker.PickAudio(target);
+        }
+
+        if (string.IsNullOrEmpty(picked))
+        {
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = false,
+                Error = "No audio file selected.",
+            };
+        }
+
+        var sourceFile = picked;
+        var sourceUrl = url;
+        return WhenGameClosed(window, request, () =>
+        {
+            try
+            {
+                var (ok, error, result) = ModApplyService.TryReplaceTrack(target, sourceUrl, sourceFile);
+                return Attempt(request, ok, error, result);
+            }
+            finally
+            {
+                if (downloaded)
+                {
+                    Mp3UrlFetch.TryDelete(sourceFile);
+                }
+            }
+        });
+    }
+
+    private static IpcEnvelope RestoreTrack(IpcEnvelope request)
+    {
+        var target = "";
+        if (request.Payload is { } payload
+            && payload.ValueKind == JsonValueKind.Object
+            && payload.TryGetProperty("target", out var targetEl))
+        {
+            target = targetEl.GetString() ?? "";
+        }
+
+        if (string.IsNullOrWhiteSpace(target))
+        {
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = false,
+                Error = "Choose which in-game theme to restore.",
+            };
+        }
+
+        var (ok, error, result) = ModApplyService.TryRestoreTrack(target);
+        return Attempt(request, ok, error, result);
+    }
+
+    private static IpcEnvelope RestoreAllAudio(IpcEnvelope request)
+    {
+        var (ok, error, result) = ModApplyService.TryRestoreAllAudio();
         return Attempt(request, ok, error, result);
     }
 
@@ -949,17 +1048,43 @@ public static class IpcRouter
             || string.Equals(full, rootFull, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static IpcEnvelope WhenGameClosed(PhotinoWindow window, IpcEnvelope request, Func<IpcEnvelope> run)
+    {
+        if (!BrawlhallaProcess.Check().Running)
+        {
+            return WithApplyProgress(window, run);
+        }
+
+        PendingGameWrites.Enqueue(window, () => WithApplyProgress(window, run));
+        return Attempt(request, true, null, new ApplyAttemptDto(false, PendingGameWrites.QueuedReason, Queued: true));
+    }
+
     private static IpcEnvelope WithApplyProgress(PhotinoWindow window, Func<IpcEnvelope> run)
     {
-        ApplyProgress.Push = progress => PushApplyProgress(window, progress);
-        try
+        lock (ApplyLock)
         {
-            return run();
+            ApplyProgress.Push = progress => PushApplyProgress(window, progress);
+            try
+            {
+                return run();
+            }
+            finally
+            {
+                ApplyProgress.Clear();
+                PushApplyDone(window);
+            }
         }
-        finally
+    }
+
+    private static void PushApplyDone(PhotinoWindow window)
+    {
+        var envelope = new IpcEnvelope
         {
-            ApplyProgress.Clear();
-        }
+            Id = "",
+            Type = "apply.done",
+            Ok = true,
+        };
+        window.SendWebMessage(JsonSerializer.Serialize(envelope, JsonOptions));
     }
 
     private static void PushApplyProgress(PhotinoWindow window, ApplyProgressDto progress)

@@ -14,4 +14,5 @@ export interface ApplyGuard {
   allowed: boolean;
   running: boolean;
   message: string | null;
+  pending?: number;
 }

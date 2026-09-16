@@ -1,6 +1,6 @@
 namespace BrawlEngine.Host.Domain.Models;
 
-public sealed record ApplyAttemptDto(bool Applied, string? Reason);
+public sealed record ApplyAttemptDto(bool Applied, string? Reason, bool Queued = false);
 
 /// <summary>Pushed while Apply / Reset runs so the card can show a percent.</summary>
 public sealed record ApplyProgressDto(

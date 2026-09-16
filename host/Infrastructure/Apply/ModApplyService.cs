@@ -103,36 +103,46 @@ public static class ModApplyService
 
     public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryReplaceTrack(
         string targetFileName,
-        string? sourceUrl = null)
+        string? sourceUrl = null,
+        string? pickedFile = null)
     {
+        string? picked = pickedFile;
+        var downloaded = false;
+        if (string.IsNullOrEmpty(picked))
+        {
+            if (!string.IsNullOrWhiteSpace(sourceUrl))
+            {
+                try
+                {
+                    picked = Mp3UrlFetch.DownloadToTempAsync(sourceUrl).GetAwaiter().GetResult();
+                    downloaded = true;
+                }
+                catch (Exception ex) when (
+                    ex is HttpRequestException or TaskCanceledException or InvalidOperationException or IOException)
+                {
+                    return (false, "Download failed: " + ex.Message, null);
+                }
+            }
+            else
+            {
+                picked = Mp3FilePicker.PickAudio(targetFileName);
+            }
+        }
+
+        if (string.IsNullOrEmpty(picked))
+        {
+            return (false, "No audio file selected.", null);
+        }
+
         var musicWrite = EnsureCanWriteMusic();
         if (musicWrite.Error is not null)
         {
-            return (false, musicWrite.Error, null);
-        }
+            if (downloaded)
+            {
+                Mp3UrlFetch.TryDelete(picked);
+            }
 
-        string? picked = null;
-        var downloaded = false;
-        if (!string.IsNullOrWhiteSpace(sourceUrl))
-        {
-            try
-            {
-                picked = Mp3UrlFetch.DownloadToTempAsync(sourceUrl).GetAwaiter().GetResult();
-                downloaded = true;
-            }
-            catch (Exception ex) when (
-                ex is HttpRequestException or TaskCanceledException or InvalidOperationException or IOException)
-            {
-                return (false, "Download failed: " + ex.Message, null);
-            }
-        }
-        else
-        {
-            picked = Mp3FilePicker.PickAudio(targetFileName);
-            if (string.IsNullOrEmpty(picked))
-            {
-                return (false, "No audio file selected.", null);
-            }
+            return (false, musicWrite.Error, null);
         }
 
         ApplyProgress.Begin("sounds", ApplyProgress.CustomReplaceId, "apply", 100);
@@ -140,7 +150,10 @@ public static class ModApplyService
 
         try
         {
-            Mp3Applier.ReplaceTrack(musicWrite.Mp3Folder!, targetFileName, picked);
+            var sourceLabel = string.IsNullOrWhiteSpace(sourceUrl)
+                ? Path.GetFileName(picked)
+                : sourceUrl.Trim();
+            Mp3Applier.ReplaceTrack(musicWrite.Mp3Folder!, targetFileName, picked, sourceLabel);
             return (true, null, new ApplyAttemptDto(true, "Replaced " + targetFileName + "."));
         }
         catch (Exception ex) when (
@@ -155,6 +168,62 @@ public static class ModApplyService
             {
                 Mp3UrlFetch.TryDelete(picked);
             }
+        }
+    }
+
+    public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryRestoreTrack(string targetFileName)
+    {
+        var musicWrite = EnsureCanWriteMusic();
+        if (musicWrite.Error is not null)
+        {
+            return (false, musicWrite.Error, null);
+        }
+
+        ApplyProgress.Begin("sounds", ApplyProgress.CustomReplaceId, "reset", 100);
+        ApplyProgress.Note("Restoring vanilla theme…");
+        try
+        {
+            var restored = Mp3Applier.RestoreTheme(musicWrite.Mp3Folder!, targetFileName);
+            AudioChangeStore.Remove(targetFileName);
+            return (true, null, new ApplyAttemptDto(true, "Restored " + restored + " vanilla audio file(s)."));
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            return (false, "Restore failed: " + ex.Message, null);
+        }
+    }
+
+    public static (bool Ok, string? Error, ApplyAttemptDto? Result) TryRestoreAllAudio()
+    {
+        var musicWrite = EnsureCanWriteMusic();
+        if (musicWrite.Error is not null)
+        {
+            return (false, musicWrite.Error, null);
+        }
+
+        ApplyProgress.Begin("sounds", ApplyProgress.CustomReplaceId, "reset", 100);
+        ApplyProgress.Note("Restoring all vanilla audio…");
+        try
+        {
+            var restored = VanillaReset.RestoreMp3();
+            var game = BrawlhallaLocator.Resolve();
+            if (game.Found && game.Path is not null)
+            {
+                restored += VanillaReset.RestoreSoundSwf(game.Path);
+            }
+
+            if (restored == 0)
+            {
+                return (false, "Nothing to restore. Apply or Replace audio first so vanilla files are backed up.", null);
+            }
+
+            LoadoutStore.ClearMusic();
+            AudioChangeStore.Clear();
+            return (true, null, new ApplyAttemptDto(true, "Restored " + restored + " vanilla audio file(s)."));
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            return (false, "Restore failed: " + ex.Message, null);
         }
     }
 
@@ -175,6 +244,7 @@ public static class ModApplyService
             }
 
             LoadoutStore.Clear();
+            AudioChangeStore.Clear();
             var reason = "Restored " + restored + " vanilla file(s).";
             if (deleteDownloads)
             {
@@ -306,6 +376,7 @@ public static class ModApplyService
             }
 
             LoadoutStore.RemoveMusic(soundId);
+            AudioChangeStore.Clear();
             ApplyProgress.Report(1, total);
             var done = 1;
             foreach (var entry in remaining)

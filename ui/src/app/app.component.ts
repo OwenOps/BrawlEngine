@@ -295,7 +295,7 @@ export class AppComponent implements OnDestroy {
     this.ipc.request(IPC_MESSAGE.GAME_RUNNING).then((reply) => {
       const status = reply.payload as ApplyGuard | undefined;
       this.gameLocation.runningMessage.set(
-        status?.running ? (status.message ?? 'Close Brawlhalla first.') : null,
+        status?.running ? (status.message ?? 'Brawlhalla is open. Apply waits until it closes.') : null,
       );
     });
   }

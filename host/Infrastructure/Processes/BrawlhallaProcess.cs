@@ -12,7 +12,7 @@ public static class BrawlhallaProcess
             Allowed: !running,
             Running: running,
             Message: running
-                ? "Close Brawlhalla before applying or changing game files."
+                ? "Brawlhalla is open. Apply waits until it closes."
                 : null);
     }
 

@@ -8,7 +8,7 @@ import { IpcService } from '../ipc/ipc.service';
 export class LoadoutService {
   private readonly ipc = inject(IpcService);
 
-  readonly loadout = signal<Loadout>({ maps: [], music: [] });
+  readonly loadout = signal<Loadout>({ maps: [], music: [], skins: [] });
   readonly configs = signal<NamedConfig[]>([]);
   readonly busy = signal(false);
   readonly activeMapIds = computed(
@@ -17,10 +17,16 @@ export class LoadoutService {
   readonly activeMusicIds = computed(
     () => new Set(this.loadout().music.map((entry) => entry.modId)),
   );
+  readonly activeSkinIds = computed(
+    () => new Set(this.loadout().skins.map((entry) => entry.modId)),
+  );
 
   constructor() {
     this.refresh();
     this.refreshConfigs();
+    this.ipc.on(IPC_MESSAGE.APPLY_DONE, () => {
+      void this.refresh();
+    });
   }
 
   refresh(): Promise<void> {
@@ -33,12 +39,13 @@ export class LoadoutService {
       this.loadout.set({
         maps: payload?.maps ?? [],
         music: payload?.music ?? [],
+        skins: payload?.skins ?? [],
       });
     });
   }
 
-  resetAll(): Promise<{ ok: boolean; message: string }> {
-    return this.runAction(IPC_MESSAGE.MODS_RESET_ALL);
+  resetAll(deleteDownloads = false): Promise<{ ok: boolean; message: string }> {
+    return this.runAction(IPC_MESSAGE.MODS_RESET_ALL, { deleteDownloads });
   }
 
   rankedSafe(): Promise<{ ok: boolean; message: string }> {

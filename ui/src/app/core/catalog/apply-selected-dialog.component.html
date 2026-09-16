@@ -1,0 +1,61 @@
+@if (open()) {
+  <div class="overlay" (click)="requestClose()">
+    <div
+      class="sheet"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="apply-selected-title"
+      (click)="$event.stopPropagation()"
+    >
+      <h2 id="apply-selected-title">{{ heading() }}</h2>
+      <p class="hint">
+        Check the packs on disk to Apply. Crash-tagged rows start unchecked.
+        If Brawlhalla is open, Apply waits until it closes.
+      </p>
+      @if (runningMessage(); as warn) {
+        <p class="warn">{{ warn }}</p>
+      }
+      @if (rows().length === 0) {
+        <p class="hint">Nothing on disk yet.</p>
+      } @else {
+        <ul class="apply-selected-list">
+          @for (row of rows(); track row.id) {
+            <li>
+              <label class="check-row" [class.disabled]="!row.canApply">
+                <input
+                  type="checkbox"
+                  [checked]="isChecked(row.id)"
+                  [disabled]="!row.canApply || applying()"
+                  (change)="toggle(row, $event)"
+                />
+                <span>
+                  {{ row.name }}
+                  @if (row.crash) {
+                    <span class="inline-badge crash">Crashes</span>
+                  }
+                  @if (row.skipReason; as reason) {
+                    <span class="hint">{{ reason }}</span>
+                  }
+                </span>
+              </label>
+            </li>
+          }
+        </ul>
+      }
+      @if (status(); as text) {
+        <p class="hint">{{ text }}</p>
+      }
+      <div class="sheet-actions">
+        <button
+          type="button"
+          class="primary"
+          (click)="confirm()"
+          [disabled]="applying() || selected().size === 0"
+        >
+          {{ applying() ? 'Applying…' : 'Apply' }}
+        </button>
+        <button type="button" (click)="requestClose()" [disabled]="applying()">Cancel</button>
+      </div>
+    </div>
+  </div>
+}

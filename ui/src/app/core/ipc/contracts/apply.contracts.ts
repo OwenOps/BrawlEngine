@@ -1,6 +1,7 @@
 export interface ApplyAttempt {
   applied: boolean;
   reason: string | null;
+  queued?: boolean;
 }
 
 export type ApplyWorkKind = 'maps' | 'sounds' | 'skins';
