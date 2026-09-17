@@ -30,7 +30,8 @@ public static class NamedConfigStore
             Guid.NewGuid().ToString("N"),
             trimmed,
             current.Maps,
-            current.Music);
+            current.Music,
+            current.Skins ?? []);
 
         var file = LoadFile();
         var configs = file.Configs.ToList();
@@ -47,7 +48,10 @@ public static class NamedConfigStore
             throw new InvalidOperationException("Config not found.");
         }
 
-        LoadoutStore.Save(new LoadoutDto(match.Maps, match.Music));
+        LoadoutStore.Save(new LoadoutDto(
+            match.Maps ?? [],
+            match.Music ?? [],
+            match.Skins ?? []));
     }
 
     public static void Delete(string id)
@@ -78,7 +82,15 @@ public static class NamedConfigStore
                 return NamedConfigListDto.Empty;
             }
 
-            return loaded;
+            var configs = loaded.Configs
+                .Select(entry => entry with
+                {
+                    Maps = entry.Maps ?? [],
+                    Music = entry.Music ?? [],
+                    Skins = entry.Skins ?? [],
+                })
+                .ToList();
+            return loaded with { Configs = configs };
         }
         catch (IOException)
         {

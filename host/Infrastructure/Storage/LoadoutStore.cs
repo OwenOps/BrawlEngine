@@ -104,6 +104,12 @@ public static class LoadoutStore
         Save(current with { Skins = [] });
     }
 
+    public static void ClearMusic()
+    {
+        var current = Load();
+        Save(current with { Music = [] });
+    }
+
     public static void Clear()
     {
         Save(LoadoutDto.Empty);

@@ -11,6 +11,15 @@ public sealed class AppSettings
     [JsonPropertyName("mp3Path")]
     public string? Mp3Path { get; set; }
 
+    [JsonPropertyName("javaPath")]
+    public string? JavaPath { get; set; }
+
+    [JsonPropertyName("ffdecLibPath")]
+    public string? FfdecLibPath { get; set; }
+
+    [JsonPropertyName("downloadsPath")]
+    public string? DownloadsPath { get; set; }
+
     public static AppSettings Load()
     {
         try
