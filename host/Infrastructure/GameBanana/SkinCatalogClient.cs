@@ -12,6 +12,8 @@ public static class SkinCatalogClient
         int page,
         string? query,
         string? sort,
+        int categoryId = 0,
+        int authorId = 0,
         CancellationToken cancellationToken = default)
     {
         if (page < 1)
@@ -19,10 +21,20 @@ public static class SkinCatalogClient
             page = 1;
         }
 
+        if (!GameBananaIds.IsSkinLegend(categoryId))
+        {
+            categoryId = 0;
+        }
+
+        if (authorId < 0)
+        {
+            authorId = 0;
+        }
+
         query = query?.Trim() ?? "";
-        var cacheKey = "skins|" + page + "|" + query + "|" + CatalogSearch.SortAlias(sort);
+        var cacheKey = "skins|" + page + "|" + query + "|" + CatalogSearch.SortAlias(sort) + "|" + categoryId + "|" + authorId;
         return await CatalogCache
-            .GetOrFetchAsync(cacheKey, ct => FetchAsync(page, query, sort, ct), cancellationToken)
+            .GetOrFetchAsync(cacheKey, ct => FetchAsync(page, query, sort, categoryId, authorId, ct), cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -30,33 +42,43 @@ public static class SkinCatalogClient
         int page,
         string query,
         string? sort,
+        int categoryId,
+        int authorId,
         CancellationToken cancellationToken)
     {
         if (query.Length >= 2)
         {
-            return await CatalogSearch.SearchAsync(
+            var found = await CatalogSearch.SearchAsync(
                     page,
                     query,
                     sort,
-                    record => CatalogSearch.IsSkinsMod(record) && CatalogSearch.NameContains(record, query),
+                    record => CatalogSearch.IsSkinsMod(record)
+                        && CatalogSearch.NameContains(record, query)
+                        && (categoryId == 0 || CatalogSearch.SubCategoryId(record) == categoryId)
+                        && (authorId == 0 || CatalogSearch.SubmitterId(record) == authorId),
                     ToItem,
                     cancellationToken)
                 .ConfigureAwait(false);
+            return found;
         }
 
+        var filterId = categoryId > 0 ? categoryId : GameBananaIds.SkinsCategoryId;
         var url =
             "https://gamebanana.com/apiv11/Mod/Index?_nPage="
             + page
             + "&_nPerpage="
             + PageSize
             + "&_aFilters%5BGeneric_Category%5D="
-            + GameBananaIds.SkinsCategoryId
+            + filterId
+            + CatalogSearch.SubmitterFilter(authorId)
             + "&_sSort="
-            + CatalogSearch.SortAlias(sort);
+            + CatalogSearch.SortAlias(sort)
+            + CatalogSearch.IndexCountFields;
 
         using var response = await AppHttp.Shared.GetAsync(url, cancellationToken).ConfigureAwait(false);
         using var doc = await GameBananaJson.ReadDocumentAsync(response, cancellationToken).ConfigureAwait(false);
-        return CatalogSearch.ParseIndex(doc.RootElement, page, ToItem);
+        var listed = CatalogSearch.ParseIndex(doc.RootElement, page, ToItem);
+        return listed;
     }
 
     private static CatalogItemDto ToItem(JsonElement record)
@@ -64,12 +86,7 @@ public static class SkinCatalogClient
         var id = record.TryGetProperty("_idRow", out var idEl) ? idEl.GetInt32() : 0;
         var name = record.TryGetProperty("_sName", out var nameEl) ? nameEl.GetString() ?? "" : "";
         var profile = record.TryGetProperty("_sProfileUrl", out var urlEl) ? urlEl.GetString() ?? "" : "";
-        var author = "";
-        if (record.TryGetProperty("_aSubmitter", out var submitter)
-            && submitter.TryGetProperty("_sName", out var authorEl))
-        {
-            author = authorEl.GetString() ?? "";
-        }
+        var (author, authorUrl, _, _) = CatalogSearch.ReadSubmitter(record);
 
         var category = GameBananaIds.SkinsCategoryName;
         if (record.TryGetProperty("_aSubCategory", out var sub)
@@ -79,7 +96,21 @@ public static class SkinCatalogClient
             category = legend;
         }
 
-        return new CatalogItemDto(id, name, author, ThumbnailUrl(record), category, profile);
+        var skinTarget = SkinTarget.FromRecord(record, name, category);
+        var description = SkinTarget.ReadDescription(record, name);
+        return CatalogSearch.AttachSocial(
+            new CatalogItemDto(
+                id,
+                name,
+                author,
+                ThumbnailUrl(record),
+                category,
+                profile,
+                skinTarget,
+                description,
+                CatalogSearch.IsNsfw(record),
+                authorUrl),
+            record);
     }
 
     private static string? ThumbnailUrl(JsonElement record)

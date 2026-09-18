@@ -12,6 +12,7 @@ public static class RealmCatalogClient
         int page,
         string? query,
         string? sort,
+        int authorId = 0,
         CancellationToken cancellationToken = default)
     {
         if (page < 1)
@@ -19,10 +20,15 @@ public static class RealmCatalogClient
             page = 1;
         }
 
+        if (authorId < 0)
+        {
+            authorId = 0;
+        }
+
         query = query?.Trim() ?? "";
-        var cacheKey = "maps|" + page + "|" + query + "|" + CatalogSearch.SortAlias(sort);
+        var cacheKey = "maps|" + page + "|" + query + "|" + CatalogSearch.SortAlias(sort) + "|" + authorId;
         return await CatalogCache
-            .GetOrFetchAsync(cacheKey, ct => FetchAsync(page, query, sort, ct), cancellationToken)
+            .GetOrFetchAsync(cacheKey, ct => FetchAsync(page, query, sort, authorId, ct), cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -30,6 +36,7 @@ public static class RealmCatalogClient
         int page,
         string query,
         string? sort,
+        int authorId,
         CancellationToken cancellationToken)
     {
         if (query.Length >= 2)
@@ -38,7 +45,9 @@ public static class RealmCatalogClient
                     page,
                     query,
                     sort,
-                    record => CatalogSearch.IsRealmsMod(record) && CatalogSearch.NameContains(record, query),
+                    record => CatalogSearch.IsRealmsMod(record)
+                        && CatalogSearch.NameContains(record, query)
+                        && (authorId == 0 || CatalogSearch.SubmitterId(record) == authorId),
                     ToItem,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -51,8 +60,10 @@ public static class RealmCatalogClient
             + PageSize
             + "&_aFilters%5BGeneric_Category%5D="
             + GameBananaIds.RealmsCategoryId
+            + CatalogSearch.SubmitterFilter(authorId)
             + "&_sSort="
-            + CatalogSearch.SortAlias(sort);
+            + CatalogSearch.SortAlias(sort)
+            + CatalogSearch.IndexCountFields;
 
         using var response = await AppHttp.Shared.GetAsync(url, cancellationToken).ConfigureAwait(false);
         using var doc = await GameBananaJson.ReadDocumentAsync(response, cancellationToken).ConfigureAwait(false);
@@ -64,12 +75,7 @@ public static class RealmCatalogClient
         var id = record.TryGetProperty("_idRow", out var idEl) ? idEl.GetInt32() : 0;
         var name = record.TryGetProperty("_sName", out var nameEl) ? nameEl.GetString() ?? "" : "";
         var profile = record.TryGetProperty("_sProfileUrl", out var urlEl) ? urlEl.GetString() ?? "" : "";
-        var author = "";
-        if (record.TryGetProperty("_aSubmitter", out var submitter)
-            && submitter.TryGetProperty("_sName", out var authorEl))
-        {
-            author = authorEl.GetString() ?? "";
-        }
+        var (author, authorUrl, _, _) = CatalogSearch.ReadSubmitter(record);
 
         var category = GameBananaIds.RealmsCategoryName;
         if (record.TryGetProperty("_aRootCategory", out var cat)
@@ -79,7 +85,17 @@ public static class RealmCatalogClient
             category = n;
         }
 
-        return new CatalogItemDto(id, name, author, ThumbnailUrl(record), category, profile);
+        return CatalogSearch.AttachSocial(
+            new CatalogItemDto(
+                id,
+                name,
+                author,
+                ThumbnailUrl(record),
+                category,
+                profile,
+                Nsfw: CatalogSearch.IsNsfw(record),
+                AuthorUrl: authorUrl),
+            record);
     }
 
     private static string? ThumbnailUrl(JsonElement record)

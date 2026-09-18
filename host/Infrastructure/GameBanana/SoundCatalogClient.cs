@@ -13,6 +13,7 @@ public static class SoundCatalogClient
         string? query,
         string? sort,
         int categoryId = 0,
+        int authorId = 0,
         CancellationToken cancellationToken = default)
     {
         if (page < 1)
@@ -25,10 +26,15 @@ public static class SoundCatalogClient
             categoryId = 0;
         }
 
+        if (authorId < 0)
+        {
+            authorId = 0;
+        }
+
         query = query?.Trim() ?? "";
-        var cacheKey = "sounds|" + page + "|" + query + "|" + CatalogSearch.SortAlias(sort) + "|" + categoryId;
+        var cacheKey = "sounds|" + page + "|" + query + "|" + CatalogSearch.SortAlias(sort) + "|" + categoryId + "|" + authorId;
         return await CatalogCache
-            .GetOrFetchAsync(cacheKey, ct => FetchAsync(page, query, sort, categoryId, ct), cancellationToken)
+            .GetOrFetchAsync(cacheKey, ct => FetchAsync(page, query, sort, categoryId, authorId, ct), cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -37,6 +43,7 @@ public static class SoundCatalogClient
         string query,
         string? sort,
         int categoryId,
+        int authorId,
         CancellationToken cancellationToken)
     {
         if (query.Length >= 2)
@@ -47,7 +54,8 @@ public static class SoundCatalogClient
                     sort,
                     record => CatalogSearch.IsModel(record, GameBananaIds.SoundItemType)
                         && CatalogSearch.NameContains(record, query)
-                        && (categoryId == 0 || CatalogSearch.RootCategoryId(record) == categoryId),
+                        && (categoryId == 0 || CatalogSearch.RootCategoryId(record) == categoryId)
+                        && (authorId == 0 || CatalogSearch.SubmitterId(record) == authorId),
                     ToItem,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -59,7 +67,9 @@ public static class SoundCatalogClient
             + "&_nPerpage="
             + PageSize
             + "&_sSort="
-            + CatalogSearch.SortAlias(sort);
+            + CatalogSearch.SortAlias(sort)
+            + CatalogSearch.SubmitterFilter(authorId)
+            + CatalogSearch.IndexCountFields;
         if (categoryId > 0)
         {
             url += "&_aFilters%5BGeneric_Category%5D=" + categoryId;
@@ -79,12 +89,7 @@ public static class SoundCatalogClient
         var id = record.TryGetProperty("_idRow", out var idEl) ? idEl.GetInt32() : 0;
         var name = record.TryGetProperty("_sName", out var nameEl) ? nameEl.GetString() ?? "" : "";
         var profile = record.TryGetProperty("_sProfileUrl", out var urlEl) ? urlEl.GetString() ?? "" : "";
-        var author = "";
-        if (record.TryGetProperty("_aSubmitter", out var submitter)
-            && submitter.TryGetProperty("_sName", out var authorEl))
-        {
-            author = authorEl.GetString() ?? "";
-        }
+        var (author, authorUrl, _, _) = CatalogSearch.ReadSubmitter(record);
 
         var category = "Sounds";
         if (record.TryGetProperty("_aRootCategory", out var cat)
@@ -94,6 +99,16 @@ public static class SoundCatalogClient
             category = n;
         }
 
-        return new CatalogItemDto(id, name, author, null, category, profile);
+        return CatalogSearch.AttachSocial(
+            new CatalogItemDto(
+                id,
+                name,
+                author,
+                null,
+                category,
+                profile,
+                Nsfw: CatalogSearch.IsNsfw(record),
+                AuthorUrl: authorUrl),
+            record);
     }
 }
