@@ -1,0 +1,55 @@
+@if (item().author || item().authorAvatarUrl) {
+  <p class="credit-line">
+    @if (item().authorAvatarUrl) {
+      <img
+        class="author-avatar"
+        [src]="item().authorAvatarUrl"
+        alt=""
+        width="18"
+        height="18"
+        loading="lazy"
+        decoding="async"
+      />
+    }
+    @if (item().author) {
+      <span class="by">by </span>
+      @if (item().authorUrl) {
+        <button
+          type="button"
+          class="link author-link"
+          [title]="'Open ' + item().author + ' on GameBanana'"
+          [attr.aria-label]="'Open ' + item().author + ' on GameBanana'"
+          (click)="openProfile()"
+        >
+          {{ item().author }}
+        </button>
+      } @else {
+        <span class="author-name">{{ item().author }}</span>
+      }
+    }
+    @if (showCategory() && item().category) {
+      <span class="credit-rest"> · {{ item().category }}</span>
+    }
+    @if (item().authorId) {
+      <button
+        type="button"
+        class="link more-author"
+        title="Show more from this author"
+        [attr.aria-label]="'More from ' + item().author"
+        (click)="openMore()"
+      >
+        More
+      </button>
+    }
+  </p>
+}
+@if (item().likeCount || item().downloadCount) {
+  <p class="card-stats">
+    @if (item().likeCount) {
+      <span title="GameBanana likes">♥ {{ formatCount(item().likeCount) }}</span>
+    }
+    @if (item().downloadCount) {
+      <span title="GameBanana downloads">⬇ {{ formatCount(item().downloadCount) }}</span>
+    }
+  </p>
+}
