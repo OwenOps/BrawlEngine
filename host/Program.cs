@@ -1,4 +1,5 @@
-﻿using BrawlEngine.Host.Presentation.Ipc;
+﻿using BrawlEngine.Host.Infrastructure.Storage;
+using BrawlEngine.Host.Presentation.Ipc;
 using Photino.NET;
 
 namespace BrawlEngine.Host;
@@ -26,6 +27,14 @@ internal static class Program
             .Center()
             .SetResizable(true)
             .SetIconFile(iconPath)
+            .SetContextMenuEnabled(false)
+#if DEBUG
+            .SetDevToolsEnabled(true)
+#else
+            .SetDevToolsEnabled(false)
+#endif
+            .RegisterCustomSchemeHandler("app", (object sender, string scheme, string url, out string contentType) =>
+                CatalogLibrary.OpenThumb(url, out contentType))
             .RegisterWebMessageReceivedHandler((sender, message) =>
             {
                 var window = (PhotinoWindow)sender!;
