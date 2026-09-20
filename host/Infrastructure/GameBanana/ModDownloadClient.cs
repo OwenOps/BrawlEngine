@@ -81,6 +81,15 @@ public static class ModDownloadClient
                 bytesBeforeCurrentFile += savedBytes;
             }
 
+            try
+            {
+                await CatalogLibrary.SaveFromProfileAsync(progressKind, doc.RootElement, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
+
             return new DownloadResultDto(id, folder, saved);
         }
         catch

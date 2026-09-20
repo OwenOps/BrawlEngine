@@ -5,6 +5,7 @@ export interface LoadoutMod {
 export interface Loadout {
   maps: LoadoutMod[];
   music: LoadoutMod[];
+  skins: LoadoutMod[];
 }
 
 export interface NamedConfig {
@@ -12,6 +13,7 @@ export interface NamedConfig {
   name: string;
   maps: LoadoutMod[];
   music: LoadoutMod[];
+  skins: LoadoutMod[];
 }
 
 export interface NamedConfigList {

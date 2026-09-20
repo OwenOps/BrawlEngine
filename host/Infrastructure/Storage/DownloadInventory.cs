@@ -10,7 +10,7 @@ public static class DownloadInventory
         {
             "sounds" => ListUnder(AppPaths.SoundDownloadsRoot),
             "skins" => ListUnder(AppPaths.SkinDownloadsRoot),
-            _ => ListMaps(),
+            _ => ListUnder(AppPaths.MapDownloadsRoot),
         };
     }
 
@@ -19,7 +19,7 @@ public static class DownloadInventory
         {
             "sounds" => AppPaths.SoundDownloadsRoot,
             "skins" => AppPaths.SkinDownloadsRoot,
-            _ => AppPaths.DownloadsRoot,
+            _ => AppPaths.MapDownloadsRoot,
         };
 
     public static DownloadSummaryDto Summary()
@@ -37,42 +37,6 @@ public static class DownloadInventory
             size,
             AppPaths.DownloadsRoot,
             DownloadsLocator.IsUsingDefault());
-    }
-
-    private static LocalDownloadListDto ListMaps()
-    {
-        var root = AppPaths.DownloadsRoot;
-        if (!Directory.Exists(root))
-        {
-            return new LocalDownloadListDto([]);
-        }
-
-        var items = new List<LocalDownloadDto>();
-        foreach (var dir in Directory.GetDirectories(root))
-        {
-            var name = Path.GetFileName(dir);
-            if (string.Equals(name, "sounds", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(name, "skins", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            if (int.TryParse(name, out var id))
-            {
-                var (hasFiles, size) = FolderStats(dir);
-                if (hasFiles)
-                {
-                    items.Add(new LocalDownloadDto(
-                        id,
-                        dir,
-                        MapCount: null,
-                        SizeBytes: size,
-                        DownloadedUtc: FolderWrittenUtc(dir)));
-                }
-            }
-        }
-
-        return new LocalDownloadListDto(items);
     }
 
     private static LocalDownloadListDto ListUnder(string root)
@@ -170,7 +134,7 @@ public static class DownloadInventory
         return true;
     }
 
-    /// <summary>Deletes GameBanana archives under downloads\. Does not touch vanilla backups.</summary>
+    /// <summary>Deletes GameBanana archives under mods\. Does not touch vanilla backups.</summary>
     public static void DeleteAllDownloads()
     {
         var root = AppPaths.DownloadsRoot;

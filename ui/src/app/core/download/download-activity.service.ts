@@ -1,13 +1,27 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { DownloadKind, DownloadProgress } from '../ipc/contracts/download.contracts';
+import { DownloadKind, DownloadProgress, DownloadSummary } from '../ipc/contracts/download.contracts';
 import { IPC_MESSAGE } from '../ipc/ipc.constants';
 import { IpcService } from '../ipc/ipc.service';
+import { formatBytes } from './format-bytes';
 
 /** Tracks active downloads (host push events) so any page or the sidebar can show live progress. */
 @Injectable({ providedIn: 'root' })
 export class DownloadActivityService {
   private readonly ipc = inject(IpcService);
   private readonly items = signal<ReadonlyMap<string, DownloadProgress>>(new Map());
+  readonly count = signal(0);
+  readonly sizeBytes = signal(0);
+  readonly folder = signal('');
+  readonly usingDefaultFolder = signal(true);
+  readonly summaryLabel = computed(() => {
+    const n = this.count();
+    const size = formatBytes(this.sizeBytes());
+    if (n === 0) {
+      return 'No downloads yet';
+    }
+    const noun = n === 1 ? 'download' : 'downloads';
+    return n + ' ' + noun + ' · ' + size;
+  });
 
   readonly active = computed(() => Array.from(this.items().values()));
 
@@ -23,6 +37,7 @@ export class DownloadActivityService {
         return next;
       });
     });
+    this.refreshSummary();
   }
 
   progressFor(kind: DownloadKind, id: number): DownloadProgress | undefined {
@@ -42,6 +57,20 @@ export class DownloadActivityService {
 
   notifyInventoryChanged(): void {
     this.inventoryEpoch.update((n) => n + 1);
+    this.refreshSummary();
+  }
+
+  private refreshSummary(): void {
+    void this.ipc.request(IPC_MESSAGE.DOWNLOADS_SUMMARY).then((reply) => {
+      if (!reply.ok) {
+        return;
+      }
+      const data = reply.payload as DownloadSummary | undefined;
+      this.count.set(data?.count ?? 0);
+      this.sizeBytes.set(data?.sizeBytes ?? 0);
+      this.folder.set(data?.folder ?? '');
+      this.usingDefaultFolder.set(data?.isDefault !== false);
+    });
   }
 
   /** Ask the host to stop this download (queued or in flight). */
