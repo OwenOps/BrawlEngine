@@ -1,14 +1,23 @@
 <section class="custom">
   <h2>Custom audio</h2>
+  <p class="hint">
+    Replacing a theme with an MP3 no longer works. A Brawlhalla update removed the old
+    <code>mp3</code> files — music is Wwise <code>.wem</code> / <code>.bnk</code> now, and a converted
+    MP3 does not play in-game. Apply a GameBanana pack only when its filenames match vanilla.
+  </p>
+  <div class="custom-tools" hidden>
   <ol class="steps">
     <li>The app looks in <code>audio\pc</code> for Wwise <code>.wem</code> files (or the old <code>mp3</code> folder if you still have it).</li>
-    <li>Pick a track (names come from <code>MUS_*.bnk</code>). Replace with a <code>.wem</code>, or an MP3 / WAV / OGG. The first convert downloads ffmpeg. The game plays the <code>.bnk</code> — Replace also writes that bank.</li>
+    <li>Pick a theme (one row per <code>MUS_*.bnk</code> — the whole map or menu, not just the 17 s intro). Replace with a <code>.wem</code>, or an MP3 / WAV / OGG. The first convert downloads ffmpeg.</li>
   </ol>
   @if (tracks().length === 0) {
     <p class="error">
       No in-game tracks yet. Use <strong>Set audio folder</strong> in the sidebar, then Retry.
     </p>
     <button type="button" (click)="reloadTracks()">Retry</button>
+    <button type="button" class="danger" (click)="restoreAllAudio()" [disabled]="isBusy()">
+      Restore all vanilla audio
+    </button>
   } @else {
     <div class="custom-row">
       <label>
@@ -17,7 +26,7 @@
           @for (group of trackGroups(); track group.id) {
             <optgroup [label]="group.label">
               @for (track of group.tracks; track track.fileName) {
-                <option [value]="track.fileName">{{ track.label }}</option>
+                <option [value]="track.fileName">{{ track.changed ? '● ' : '' }}{{ track.label }}</option>
               }
             </optgroup>
           }
@@ -25,6 +34,12 @@
       </label>
       <button type="button" class="primary" (click)="replaceTrack()" [disabled]="isBusy() || !selectedTrack()">
         {{ replacing() ? 'Replacing…' : '📁 Replace with file…' }}
+      </button>
+      <button type="button" class="danger" (click)="restoreTrack()" [disabled]="isBusy() || !selectedTrack()">
+        Restore vanilla
+      </button>
+      <button type="button" class="danger" (click)="restoreAllAudio()" [disabled]="isBusy()">
+        Restore all vanilla audio
       </button>
     </div>
     @if (selectedSlotHint(); as hint) {
@@ -46,6 +61,51 @@
   @if (convertStatus(); as note) {
     <p class="note">{{ note }}</p>
   }
+  @if (tracks().length > 0 || otherChangeCount() > 0) {
+    <div class="changed">
+      <h3>Changed from vanilla</h3>
+      <p class="hint">
+        Themes whose game files differ from BrawlEngine's backup. If Replace succeeded but a theme is missing here, the write did not stick.
+      </p>
+      @if (changedTracks().length === 0 && otherChangeCount() === 0) {
+        <p class="hint">No audio files differ from the vanilla backup.</p>
+      } @else {
+        <ul class="changed-list">
+          @for (track of changedTracks(); track track.fileName) {
+            <li>
+              <div>
+                <strong>{{ track.label }}</strong>
+                <span>{{ changedDetail(track) }}</span>
+              </div>
+              <button
+                type="button"
+                class="danger"
+                (click)="restoreListed(track.fileName)"
+                [disabled]="isBusy()"
+              >
+                Restore
+              </button>
+            </li>
+          }
+        </ul>
+        @if (otherChangeCount() > 0) {
+          <p class="hint">
+            {{ otherChangeCount() }} other audio file{{ otherChangeCount() === 1 ? '' : 's' }}
+            (voicelines, UI, or copied packs):
+          </p>
+          <ul class="changed-other">
+            @for (name of otherChanges(); track name) {
+              <li>{{ name }}</li>
+            }
+          </ul>
+          @if (otherChangeCount() > otherChanges().length) {
+            <p class="hint">and {{ otherChangeCount() - otherChanges().length }} more. Restore all vanilla audio to revert them.</p>
+          }
+        }
+      }
+    </div>
+  }
+  </div>
 </section>
 
 <header class="page-head">
@@ -59,7 +119,7 @@
     </p>
     <div class="head-actions">
       <button type="button" class="link" (click)="openDownloadsFolder()">
-        Open downloads folder
+        Open mods folder
       </button>
       <button type="button" class="link" (click)="openAddZip()" [disabled]="isBusy()">
         Add zip…

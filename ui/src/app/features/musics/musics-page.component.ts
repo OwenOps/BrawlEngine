@@ -96,6 +96,8 @@ export class MusicsPageComponent implements OnDestroy {
   readonly importing = signal(false);
   readonly cardNote = signal<Record<number, string>>({});
   readonly tracks = signal<MusicTrack[]>([]);
+  readonly otherChanges = signal<string[]>([]);
+  readonly otherChangeCount = signal(0);
   readonly selectedTrack = signal('');
   readonly customNote = signal<string | null>(null);
   readonly audioUrl = signal('');
@@ -172,6 +174,7 @@ export class MusicsPageComponent implements OnDestroy {
     }
     return slotHint(asMusicSlot(meta.slot));
   });
+  readonly changedTracks = computed(() => this.tracks().filter((track) => track.changed));
   readonly convertStatus = computed(() => {
     if (!this.replacing()) {
       return this.customNote();
@@ -609,6 +612,7 @@ export class MusicsPageComponent implements OnDestroy {
       if (libraryFollowsLoadout(this.libraryFilter())) {
         this.loadLibrary();
       }
+      this.loadTracks();
       if (failed.length === 0) {
         this.applySelectedOpen.set(false);
       }
@@ -638,6 +642,7 @@ export class MusicsPageComponent implements OnDestroy {
               this.loadLibrary();
             }
           });
+          this.loadTracks();
         }
         return true;
       })
@@ -669,6 +674,104 @@ export class MusicsPageComponent implements OnDestroy {
     this.runReplace(url);
   }
 
+  restoreTrack(): void {
+    const target = this.selectedTrack();
+    if (!target || this.isBusy()) {
+      return;
+    }
+
+    if (!window.confirm('Restore this theme to vanilla Brawlhalla audio?')) {
+      return;
+    }
+
+    this.replacing.set(true);
+    this.customNote.set('Restoring vanilla…');
+    this.ipc
+      .request(IPC_MESSAGE.MUSIC_RESTORE, { target })
+      .then((reply) => {
+        if (!reply.ok) {
+          this.customNote.set(reply.error ?? 'Restore failed.');
+          return;
+        }
+        const result = reply.payload as ApplyAttempt | undefined;
+        this.customNote.set(result?.reason ?? 'Restored vanilla.');
+      })
+      .catch((error: unknown) => {
+        this.customNote.set(error instanceof Error ? error.message : 'Restore failed.');
+      })
+      .finally(() => {
+        this.replacing.set(false);
+        this.applyActivity.clear('sounds', CUSTOM_AUDIO_PROGRESS_ID);
+        this.loadTracks();
+      });
+  }
+
+  restoreAllAudio(): void {
+    if (this.isBusy()) {
+      return;
+    }
+
+    if (
+      !window.confirm(
+        'Restore ALL game audio to vanilla? Custom themes and applied sound packs will be removed from the game. Maps and skins stay.',
+      )
+    ) {
+      return;
+    }
+
+    this.replacing.set(true);
+    this.customNote.set('Restoring all vanilla audio…');
+    this.ipc
+      .request(IPC_MESSAGE.MUSIC_RESTORE_ALL)
+      .then((reply) => {
+        if (!reply.ok) {
+          this.customNote.set(reply.error ?? 'Restore failed.');
+          return;
+        }
+        const result = reply.payload as ApplyAttempt | undefined;
+        this.customNote.set(result?.reason ?? 'Restored all vanilla audio.');
+        return this.loadout.refresh();
+      })
+      .catch((error: unknown) => {
+        this.customNote.set(error instanceof Error ? error.message : 'Restore failed.');
+      })
+      .finally(() => {
+        this.replacing.set(false);
+        this.applyActivity.clear('sounds', CUSTOM_AUDIO_PROGRESS_ID);
+        this.loadTracks();
+      });
+  }
+
+  restoreListed(fileName: string): void {
+    this.selectedTrack.set(fileName);
+    this.restoreTrack();
+  }
+
+  changedDetail(track: MusicTrack): string {
+    const when = this.formatChangedAt(track.changedAt);
+    if (track.source && when) {
+      return 'from ' + track.source + ' · ' + when;
+    }
+    if (track.source) {
+      return 'from ' + track.source;
+    }
+    if (when) {
+      return when;
+    }
+    return 'differs from backup';
+  }
+
+  private formatChangedAt(iso: string | null | undefined): string {
+    if (!iso) {
+      return '';
+    }
+    const at = Date.parse(iso);
+    if (Number.isNaN(at)) {
+      return '';
+    }
+    return new Date(at).toLocaleString();
+  }
+
   private runReplace(url: string | undefined): void {
     const target = this.selectedTrack();
     if (!target || this.isBusy()) {
@@ -694,6 +797,7 @@ export class MusicsPageComponent implements OnDestroy {
       .finally(() => {
         this.replacing.set(false);
         this.applyActivity.clear('sounds', CUSTOM_AUDIO_PROGRESS_ID);
+        this.loadTracks();
       });
   }
 
@@ -740,6 +844,7 @@ export class MusicsPageComponent implements OnDestroy {
             if (libraryFollowsLoadout(this.libraryFilter())) {
               this.loadLibrary();
             }
+          this.loadTracks();
           return true;
         });
       })
@@ -844,6 +949,8 @@ export class MusicsPageComponent implements OnDestroy {
     this.ipc.request(IPC_MESSAGE.MUSIC_TRACKS).then((reply) => {
       if (!reply.ok) {
         this.tracks.set([]);
+        this.otherChanges.set([]);
+        this.otherChangeCount.set(0);
         this.customNote.set(reply.error ?? 'Could not list game audio tracks.');
         return;
       }
@@ -851,11 +958,13 @@ export class MusicsPageComponent implements OnDestroy {
       const data = reply.payload as MusicTracks | undefined;
       const list = data?.tracks ?? [];
       this.tracks.set(list);
+      this.otherChanges.set(data?.otherChanges ?? []);
+      this.otherChangeCount.set(data?.otherCount ?? 0);
       if (list.length > 0) {
-        this.customNote.set(null);
         const names = list.map((track) => track.fileName);
         if (!this.selectedTrack() || !names.includes(this.selectedTrack())) {
-          const menu = list.find((track) => track.slot === 'menu');
+          const mainMenu = list.find((track) => track.label.startsWith('Menu (main)'));
+          const menu = mainMenu ?? list.find((track) => track.slot === 'menu');
           this.selectedTrack.set((menu ?? list[0]).fileName);
         }
       }

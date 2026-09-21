@@ -25,6 +25,37 @@ public static class MusicTrackList
 
         var bankById = MapWemIdsToMusBank(audioFolder);
         var tracks = new List<MusicTrackDto>();
+        foreach (var bnk in Directory.GetFiles(audioFolder, "MUS_*.bnk"))
+        {
+            IReadOnlyList<WwiseDidx.MediaIndex> entries;
+            try
+            {
+                entries = WwiseDidx.ReadEntries(bnk);
+            }
+            catch (IOException)
+            {
+                continue;
+            }
+
+            if (entries.Count == 0)
+            {
+                continue;
+            }
+
+            var bankName = Path.GetFileName(bnk);
+            WwiseDidx.MediaIndex longest = entries[0];
+            foreach (var entry in entries)
+            {
+                if (entry.Size > longest.Size)
+                {
+                    longest = entry;
+                }
+            }
+
+            var fileName = longest.Id + ".wem";
+            tracks.Add(new MusicTrackDto(fileName, HumanBankName(bankName), SlotForMusBank(bankName)));
+        }
+
         foreach (var file in Directory.GetFiles(audioFolder, "*.wem"))
         {
             var name = Path.GetFileName(file);
@@ -40,21 +71,69 @@ public static class MusicTrackList
                 continue;
             }
 
-            if (bankById.TryGetValue(id, out var bankFile))
+            if (bankById.TryGetValue(id, out _))
             {
-                var label = HumanBankName(bankFile) + " · " + name;
-                tracks.Add(new MusicTrackDto(name, label, SlotForMusBank(bankFile)));
+                continue;
             }
-            else
-            {
-                tracks.Add(new MusicTrackDto(name, name, "other"));
-            }
+
+            tracks.Add(new MusicTrackDto(name, name, "other"));
         }
 
         return tracks
             .OrderBy(track => track.Slot, StringComparer.OrdinalIgnoreCase)
             .ThenBy(track => track.Label, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    /// <summary>Old mp3 folder names (BrawlhallaMenu.mp3, …) → a numbered .wem in that slot.</summary>
+    public static string? MapLegacyFileName(string audioFolder, string sourceFileName)
+    {
+        var slot = SlotForLegacyMp3(sourceFileName);
+        if (slot == "other")
+        {
+            return null;
+        }
+
+        var tracks = List(audioFolder)
+            .Where(track =>
+                track.Slot == slot
+                && track.FileName.EndsWith(".wem", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (tracks.Count == 0)
+        {
+            return null;
+        }
+
+        if (slot == "menu")
+        {
+            var menuOnly = tracks
+                .Where(track => track.Label.StartsWith("Menu (main)", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (menuOnly.Count > 0)
+            {
+                tracks = menuOnly;
+            }
+        }
+
+        string? best = null;
+        long bestSize = -1;
+        foreach (var track in tracks)
+        {
+            var path = Path.Combine(audioFolder, track.FileName);
+            if (!File.Exists(path))
+            {
+                continue;
+            }
+
+            var size = new FileInfo(path).Length;
+            if (size > bestSize)
+            {
+                bestSize = size;
+                best = track.FileName;
+            }
+        }
+
+        return best ?? tracks[0].FileName;
     }
 
     private static Dictionary<uint, string> MapWemIdsToMusBank(string audioFolder)
@@ -88,6 +167,36 @@ public static class MusicTrackList
     private static string HumanBankName(string bankFile)
     {
         var stem = Path.GetFileNameWithoutExtension(bankFile);
+        if (stem.Equals("MUS_Menu", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Menu (main)";
+        }
+
+        if (stem.Equals("MUS_BattlePass", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Battle Pass";
+        }
+
+        if (stem.StartsWith("MUS_BattlePass_", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Battle Pass · " + stem["MUS_BattlePass_".Length..].Replace('_', ' ');
+        }
+
+        if (stem.StartsWith("MUS_Menu_Event_", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Event menu · " + stem["MUS_Menu_Event_".Length..].Replace('_', ' ');
+        }
+
+        if (stem.StartsWith("MUS_Menu_XO_", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Crossover menu · " + stem["MUS_Menu_XO_".Length..].Replace('_', ' ');
+        }
+
+        if (stem.Equals("MUS_Level_01", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Level 01 (default maps)";
+        }
+
         if (stem.StartsWith("MUS_", StringComparison.OrdinalIgnoreCase))
         {
             stem = stem[4..];
@@ -109,7 +218,8 @@ public static class MusicTrackList
             return "select";
         }
 
-        if (stem.StartsWith("MUS_Menu", StringComparison.OrdinalIgnoreCase))
+        if (stem.StartsWith("MUS_Menu", StringComparison.OrdinalIgnoreCase)
+            || stem.StartsWith("MUS_BattlePass", StringComparison.OrdinalIgnoreCase))
         {
             return "menu";
         }

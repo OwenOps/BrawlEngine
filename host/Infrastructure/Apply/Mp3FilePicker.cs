@@ -22,8 +22,10 @@ public static class Mp3FilePicker
         var wem = Path.GetExtension(targetFileName).Equals(".wem", StringComparison.OrdinalIgnoreCase);
         using var dialog = new OpenFileDialog
         {
-            Title = wem ? "Choose a Wwise .wem file" : "Choose an MP3 file",
-            Filter = wem ? "Wwise (*.wem)|*.wem" : "MP3 (*.mp3)|*.mp3",
+            Title = wem ? "Choose audio to convert, or a .wem" : "Choose an MP3 file",
+            Filter = wem
+                ? "Audio|*.mp3;*.wav;*.ogg;*.flac;*.wem|Wwise (*.wem)|*.wem|MP3 (*.mp3)|*.mp3"
+                : "MP3 (*.mp3)|*.mp3",
             CheckFileExists = true,
             Multiselect = false,
         };

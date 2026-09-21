@@ -13,18 +13,27 @@ export interface IpcEnvelope {
 const NO_TIMEOUT = new Set<string>([
   'game.pick',
   'music.pick',
+  'skins.tools',
+  'skins.tools.pick',
   'folder.open',
   'downloads.open',
+  'downloads.pick',
+  'downloads.reset',
+  'downloads.import',
   'browser.open',
   'mod.download',
   'sound.download',
   'skin.download',
+  'skin.apply',
+  'skin.reset',
   'downloads.cancel',
   'mod.apply',
   'mod.reset',
   'music.apply',
   'music.reset',
   'music.replace',
+  'music.restore',
+  'music.restoreAll',
   'mods.resetAll',
   'mods.reapply',
   'mods.rankedSafe',
@@ -104,7 +113,7 @@ export class IpcService {
       return 90000;
     }
     if (type.startsWith('catalog.')) {
-      return 60000;
+      return 90000;
     }
     return 25000;
   }

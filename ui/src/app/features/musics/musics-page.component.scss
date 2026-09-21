@@ -55,6 +55,61 @@
   font-size: 0.85em;
 }
 
+.changed {
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.changed h3 {
+  margin: 0 0 0.25rem;
+  font-size: 0.8rem;
+}
+
+.changed-list,
+.changed-other {
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.changed-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.changed-list li:last-child {
+  border-bottom: 0;
+}
+
+.changed-list strong {
+  display: block;
+  font-size: 0.85rem;
+}
+
+.changed-list span {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.changed-other {
+  max-height: 8rem;
+  overflow: auto;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.changed-other li {
+  padding: 0.15rem 0;
+  word-break: break-all;
+}
+
 @media (max-height: 600px) {
   .custom {
     margin-bottom: 0.7rem;
