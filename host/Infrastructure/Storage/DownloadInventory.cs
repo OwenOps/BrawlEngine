@@ -19,7 +19,8 @@ public static class DownloadInventory
         {
             "sounds" => AppPaths.SoundDownloadsRoot,
             "skins" => AppPaths.SkinDownloadsRoot,
-            _ => AppPaths.MapDownloadsRoot,
+            "maps" => AppPaths.MapDownloadsRoot,
+            _ => AppPaths.DownloadsRoot,
         };
 
     public static DownloadSummaryDto Summary()

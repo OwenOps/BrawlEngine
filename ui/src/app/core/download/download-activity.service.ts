@@ -17,9 +17,9 @@ export class DownloadActivityService {
     const n = this.count();
     const size = formatBytes(this.sizeBytes());
     if (n === 0) {
-      return 'No downloads yet';
+      return 'No mods yet';
     }
-    const noun = n === 1 ? 'download' : 'downloads';
+    const noun = n === 1 ? 'mod' : 'mods';
     return n + ' ' + noun + ' · ' + size;
   });
 

@@ -49,6 +49,9 @@ export interface DownloadImport {
 
 export type DownloadKind = 'maps' | 'sounds' | 'skins';
 
+/** `mods` is the parent folder (Maps + sounds + skins). */
+export type DownloadsFolderKind = DownloadKind | 'mods';
+
 export interface DownloadProgress {
   kind: DownloadKind;
   id: number;

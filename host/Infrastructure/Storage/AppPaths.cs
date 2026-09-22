@@ -68,6 +68,21 @@ public static class AppPaths
         EnsureLayout();
     }
 
+    /// <summary>
+    /// Custom picks store archives in Mods\ inside the chosen folder, unless that folder is already named Mods.
+    /// </summary>
+    public static string WithModsFolder(string picked)
+    {
+        var full = Path.GetFullPath(picked.Trim());
+        return IsModsDirectoryName(full) ? full : Path.Combine(full, "Mods");
+    }
+
+    public static bool IsModsDirectoryName(string path)
+    {
+        var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(path));
+        return string.Equals(name, "Mods", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string ResolvedDownloadsRoot()
     {
         var saved = AppSettings.Load().DownloadsPath?.Trim();
@@ -79,6 +94,7 @@ public static class AppPaths
         lock (LayoutLock)
         {
             MigrateDefaultRoot();
+            WrapCustomRootIntoMods();
             var root = ResolvedDownloadsRoot();
             if (nestedMapsRoot is not null && SamePath(nestedMapsRoot, root))
             {
@@ -88,6 +104,42 @@ public static class AppPaths
             NestMapsUnder(root);
             nestedMapsRoot = root;
         }
+    }
+
+    /// <summary>
+    /// Old custom roots dumped Maps/sounds/skins in the picked folder. Move them under Mods\.
+    /// </summary>
+    private static void WrapCustomRootIntoMods()
+    {
+        var settings = AppSettings.Load();
+        var saved = settings.DownloadsPath?.Trim();
+        if (string.IsNullOrWhiteSpace(saved) || IsModsDirectoryName(saved))
+        {
+            return;
+        }
+
+        string from;
+        try
+        {
+            from = Path.GetFullPath(saved);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return;
+        }
+
+        var mods = Path.Combine(from, "Mods");
+        if (SamePath(from, mods))
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(mods);
+        MergeMoveDirectory(Path.Combine(from, "Maps"), Path.Combine(mods, "Maps"));
+        MergeMoveDirectory(Path.Combine(from, "sounds"), Path.Combine(mods, "sounds"));
+        MergeMoveDirectory(Path.Combine(from, "skins"), Path.Combine(mods, "skins"));
+        settings.DownloadsPath = mods;
+        settings.Save();
     }
 
     private static void MigrateDefaultRoot()

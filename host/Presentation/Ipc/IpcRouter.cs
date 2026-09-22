@@ -5,6 +5,7 @@ using BrawlEngine.Host.Infrastructure.GameBanana;
 using BrawlEngine.Host.Infrastructure.Processes;
 using BrawlEngine.Host.Infrastructure.Steam;
 using BrawlEngine.Host.Infrastructure.Storage;
+using BrawlEngine.Host.Infrastructure.Update;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
@@ -48,6 +49,7 @@ public static class IpcRouter
         var reply = request.Type switch
         {
             "ping" => Pong(request),
+            "app.update" => AppUpdate(request),
             "game.get" => GameLocation(request, Mp3Locator.AttachTo(BrawlhallaLocator.Resolve())),
             "game.pick" => GameLocation(request, Mp3Locator.AttachTo(BrawlhallaLocator.PickFolder())),
             "music.pick" => MusicPick(request),
@@ -157,6 +159,17 @@ public static class IpcRouter
             Type = "pong",
             Ok = true,
             Payload = JsonSerializer.SerializeToElement(new AppInfoDto(MadeBy, AppVersion()), JsonOptions),
+        };
+    }
+
+    private static IpcEnvelope AppUpdate(IpcEnvelope request)
+    {
+        return new IpcEnvelope
+        {
+            Id = request.Id,
+            Type = request.Type,
+            Ok = true,
+            Payload = JsonSerializer.SerializeToElement(AppUpdateCheck.Check(AppVersion()), JsonOptions),
         };
     }
 
@@ -991,11 +1004,6 @@ public static class IpcRouter
     private static IpcEnvelope OpenDownloads(IpcEnvelope request)
     {
         var kind = ReadString(request, "kind");
-        if (kind != "maps" && kind != "sounds" && kind != "skins")
-        {
-            kind = "maps";
-        }
-
         var folder = DownloadInventory.KindFolder(kind);
         Directory.CreateDirectory(folder);
         return LaunchExplorer(request, folder);

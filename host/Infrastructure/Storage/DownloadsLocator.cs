@@ -50,7 +50,7 @@ public static class DownloadsLocator
 
         using var dialog = new FolderBrowserDialog
         {
-            Description = "Select the mods folder. Maps, audio, and skins are stored in Maps, sounds, and skins inside it.",
+            Description = "Choose a folder. Downloaded maps, audio, and skins go in Mods inside it.",
             UseDescriptionForTitle = true,
             ShowNewFolderButton = true,
             SelectedPath = from,
@@ -61,13 +61,23 @@ public static class DownloadsLocator
             return Current() with { Cancelled = true };
         }
 
-        var path = dialog.SelectedPath.Trim();
-        if (path.Length == 0)
+        var picked = dialog.SelectedPath.Trim();
+        if (picked.Length == 0)
         {
             return new DownloadsLocationDto(from)
             {
                 Error = "Pick a folder to store downloaded mods.",
             };
+        }
+
+        string path;
+        try
+        {
+            path = AppPaths.WithModsFolder(picked);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return new DownloadsLocationDto(from) { Error = "That mods folder path is not valid." };
         }
 
         Directory.CreateDirectory(path);

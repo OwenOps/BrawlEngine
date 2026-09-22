@@ -27,6 +27,9 @@ internal static class Program
             .Center()
             .SetResizable(true)
             .SetIconFile(iconPath)
+            // Stable id so Windows does not keep a first-run blank taskbar icon keyed on the title.
+            .SetNotificationRegistrationId("3f8a2c61-9d4e-4b17-8a90-7c1e5d2f4a08")
+            .SetNotificationsEnabled(false)
             .SetContextMenuEnabled(false)
 #if DEBUG
             .SetDevToolsEnabled(true)

@@ -7,13 +7,22 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { AppInfo } from './core/ipc/contracts/app-info.contracts';
+import { AppInfo, AppUpdate } from './core/ipc/contracts/app-info.contracts';
 import { ApplyGuard, GameLocation } from './core/ipc/contracts/game.contracts';
 import { IPC_MESSAGE } from './core/ipc/ipc.constants';
 import { IpcService } from './core/ipc/ipc.service';
 import { LoadoutService } from './core/loadout/loadout.service';
 import { APP_TABS, AppTabId } from './core/navigation/app-tabs.config';
-import { APP_SHELL_TEXT, CONTACT_DISCORD, GAMEBANANA_GAME_URL, RESET_WAIT, SOURCE_REPO_URL } from './core/ui/app-shell.constants';
+import {
+  APP_SHELL_TEXT,
+  CATALOG_HINT,
+  CATALOG_HINT_STORAGE_KEY,
+  CONTACT_DISCORD,
+  GAMEBANANA_GAME_URL,
+  RESET_WAIT,
+  SOURCE_REPO_URL,
+  UPDATE_DISMISS_STORAGE_KEY,
+} from './core/ui/app-shell.constants';
 import { BrowserService } from './core/browser/browser.service';
 import { GameLocationState } from './core/game/game-location.state';
 import { ApplyActivityService } from './core/apply/apply-activity.service';
@@ -57,12 +66,15 @@ export class AppComponent implements OnDestroy {
   readonly actionMessage = signal<string | null>(null);
   readonly madeBy = signal<string | null>(null);
   readonly appVersion = signal<string | null>(null);
+  readonly update = signal<AppUpdate | null>(null);
   readonly discordCopied = signal(false);
   readonly discordUser = CONTACT_DISCORD;
   readonly resetDialogOpen = signal(false);
   readonly resetDeleteDownloads = signal(false);
   readonly resetRunning = signal(false);
   readonly resetWait = RESET_WAIT;
+  readonly catalogHint = CATALOG_HINT;
+  readonly catalogHintOpen = signal(localStorage.getItem(CATALOG_HINT_STORAGE_KEY) !== '1');
   readonly configName = signal('');
   readonly configs = this.loadout.configs;
   readonly shellBusy = computed(
@@ -86,6 +98,7 @@ export class AppComponent implements OnDestroy {
       this.madeBy.set(info?.madeBy?.trim() || null);
       this.appVersion.set(info?.version?.trim() || null);
     });
+    this.refreshUpdate();
     this.refreshGame();
     this.refreshRunning();
     this.runningTimer = setInterval(() => this.refreshRunning(), 2000);
@@ -111,7 +124,14 @@ export class AppComponent implements OnDestroy {
   onEscape(): void {
     if (this.resetDialogOpen() && !this.resetRunning()) {
       this.closeResetDialog();
+    } else if (this.catalogHintOpen()) {
+      this.dismissCatalogHint();
     }
+  }
+
+  dismissCatalogHint(): void {
+    localStorage.setItem(CATALOG_HINT_STORAGE_KEY, '1');
+    this.catalogHintOpen.set(false);
   }
 
   selectTheme(name: ThemeName): void {
@@ -230,6 +250,21 @@ export class AppComponent implements OnDestroy {
     this.browser.open(SOURCE_REPO_URL);
   }
 
+  openUpdate(): void {
+    const url = this.update()?.url?.trim();
+    if (url) {
+      this.browser.open(url);
+    }
+  }
+
+  dismissUpdate(): void {
+    const latest = this.update()?.latest?.trim();
+    if (latest) {
+      localStorage.setItem(UPDATE_DISMISS_STORAGE_KEY, latest);
+    }
+    this.update.set(null);
+  }
+
   copyDiscord(): void {
     void navigator.clipboard.writeText(CONTACT_DISCORD).then(() => {
       this.discordCopied.set(true);
@@ -241,7 +276,7 @@ export class AppComponent implements OnDestroy {
   }
 
   openDownloads(): void {
-    this.browser.openDownloads('maps');
+    this.browser.openDownloads('mods');
   }
 
   chooseDownloadsFolder(): void {
@@ -280,6 +315,23 @@ export class AppComponent implements OnDestroy {
       .finally(() => {
         this.actionBusy.set(false);
       });
+  }
+
+  private refreshUpdate(): void {
+    this.ipc.request(IPC_MESSAGE.APP_UPDATE).then((reply) => {
+      if (!reply.ok) {
+        return;
+      }
+      const data = reply.payload as AppUpdate | undefined;
+      const latest = data?.latest?.trim();
+      if (!data?.available || !latest) {
+        return;
+      }
+      if (localStorage.getItem(UPDATE_DISMISS_STORAGE_KEY) === latest) {
+        return;
+      }
+      this.update.set({ available: true, latest, url: data.url ?? null });
+    });
   }
 
   private refreshGame(): void {

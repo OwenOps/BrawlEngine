@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { DownloadKind } from '../ipc/contracts/download.contracts';
+import { DownloadKind, DownloadsFolderKind } from '../ipc/contracts/download.contracts';
 import { IPC_MESSAGE } from '../ipc/ipc.constants';
 import { IpcService } from '../ipc/ipc.service';
 
@@ -32,7 +32,7 @@ export class BrowserService {
     });
   }
 
-  openDownloads(kind: DownloadKind): void {
+  openDownloads(kind: DownloadsFolderKind = 'mods'): void {
     void this.ipc.request(IPC_MESSAGE.DOWNLOADS_OPEN, { kind });
   }
 

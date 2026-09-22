@@ -1,5 +1,6 @@
 export const IPC_MESSAGE = {
   PING: 'ping',
+  APP_UPDATE: 'app.update',
   GAME_GET: 'game.get',
   GAME_PICK: 'game.pick',
   GAME_RUNNING: 'game.running',

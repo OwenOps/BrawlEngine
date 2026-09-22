@@ -163,6 +163,20 @@ button.icon-btn {
   border-top: 1px solid var(--border);
 }
 
+.update-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.55rem;
+  margin: 0.4rem 0 0;
+  font-size: 0.75rem;
+  color: var(--warn);
+}
+
+.update-note .link {
+  font-size: 0.75rem;
+}
+
 button.wide {
   width: 100%;
   padding: 0.55rem 0.75rem;

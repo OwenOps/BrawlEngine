@@ -50,19 +50,23 @@
     </div>
 
     <div class="sidebar-section disk">
-      <p class="section-label">On disk</p>
-      <p class="path" [title]="downloadActivity.folder()">
-        {{ downloadActivity.folder() || 'Looking for mods folder…' }}
-      </p>
-      <p class="path" title="Maps, audio, and skins in the mods folder">
-        {{ downloadActivity.summaryLabel() }}
-      </p>
+      <p class="section-label">Mods</p>
+      <div class="status-row" [attr.aria-label]="downloadActivity.folder() ? 'Mods folder found' : 'Mods folder not found'">
+        <span
+          class="status-dot"
+          [class.ok]="!!downloadActivity.folder()"
+          [class.bad]="!downloadActivity.folder()"
+        ></span>
+        <p class="path" [title]="downloadActivity.folder()">
+          {{ downloadActivity.folder() || 'Looking for mods folder…' }}
+        </p>
+      </div>
       <div class="disk-actions">
         <button
           type="button"
           class="disk-icon"
-          title="Open folder"
-          aria-label="Open folder"
+          title="Open mods folder"
+          aria-label="Open mods folder"
           (click)="openDownloads()"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -141,6 +145,9 @@
           </button>
         }
       </div>
+      <p class="path" title="Maps, audio, and skins in the mods folder">
+        {{ downloadActivity.summaryLabel() }}
+      </p>
       @if (hasSidebarActivity()) {
         <div class="activity" role="status">
           @for (item of downloadActivity.active(); track item.kind + ':dl:' + item.id) {
@@ -285,6 +292,13 @@
       @if (appVersion(); as version) {
         <p class="credit">v{{ version }}</p>
       }
+      @if (update(); as next) {
+        <p class="update-note">
+          Update {{ next.latest }}
+          <button type="button" class="link" (click)="openUpdate()">Open</button>
+          <button type="button" class="link" (click)="dismissUpdate()">Dismiss</button>
+        </p>
+      }
     </div>
   </aside>
 
@@ -304,6 +318,26 @@
     }
   </main>
 </div>
+
+@if (catalogHintOpen()) {
+  <div class="overlay" (click)="dismissCatalogHint()">
+    <div
+      class="sheet"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="catalog-hint-title"
+      (click)="$event.stopPropagation()"
+    >
+      <h2 id="catalog-hint-title">{{ catalogHint.title }}</h2>
+      <p class="hint">{{ catalogHint.body }}</p>
+      <div class="sheet-actions">
+        <button type="button" class="primary" (click)="dismissCatalogHint()">Got it</button>
+        <button type="button" (click)="openGameBanana()">Open GameBanana</button>
+        <button type="button" (click)="openDownloads()">Open mods folder</button>
+      </div>
+    </div>
+  </div>
+}
 
 @if (resetDialogOpen()) {
   <div class="overlay" (click)="closeResetDialog()">
