@@ -16,6 +16,9 @@ ui/node_modules/
 ui/dist/
 ui/.angular/
 
+# Publish output (zip this; do not commit)
+dist/
+
 #Visual
 .vs
 ui/.vscode/

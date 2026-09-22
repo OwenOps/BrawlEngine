@@ -52,11 +52,26 @@ Old **Sound.swf** UI / weapon packs cannot Apply — those files are gone from t
 cd ui
 npx ng build
 cd ..\host
-dotnet publish -c Release -r win-x64 --self-contained true -o ..\dist\BrawlEngine
+dotnet publish -c Release -r win-x64 --self-contained true -p:DebugType=None -o ..\dist\BrawlEngine
 ```
 
-Zip `dist\BrawlEngine`. Do not ship `bin\Release` — that build needs the .NET 10 runtime on the PC.
+Do not ship `bin\Release` — that build needs the .NET 10 runtime on the PC.
+
+### GitHub Release (zip)
+
+From the repo root, after the publish above:
+
+```powershell
+if (Test-Path dist\BrawlEngine-0.6.0-win-x64.zip) { Remove-Item dist\BrawlEngine-0.6.0-win-x64.zip }
+Compress-Archive -Path dist\BrawlEngine -DestinationPath dist\BrawlEngine-0.6.0-win-x64.zip
+git push origin main
+gh release create v0.6.0 dist\BrawlEngine-0.6.0-win-x64.zip --title "BrawlEngine 0.6.0 (beta)" --notes "First public beta. Extract the zip and run BrawlEngine.exe. Windows may warn about an unknown publisher."
+```
+
+A Release `dotnet publish` also drops a `BrawlEngine.lnk` on **your** desktop (post-build). You can delete that shortcut; it is not inside the zip.
+
+Bump `<Version>` in `host/BrawlEngine.Host.csproj` before the next tag (`v0.6.1`, …) so the in-app update check can see it.
 
 ## Credits
 
-Mods come from [GameBanana](https://gamebanana.com/games/5704). Skin apply uses [JPEXS `ffdec_lib`](https://github.com/jindrapetrik/jpexs-decompiler) (LGPLv3). `wav2wem.exe` is GPLv2 from [pas2k/wav2wem](https://github.com/pas2k/wav2wem), run as a separate process (see `host/tools/NOTICE.txt`).
+BrawlEngine is [MIT](LICENSE). Third-party tools keep their own licenses: skin apply uses [JPEXS `ffdec_lib`](https://github.com/jindrapetrik/jpexs-decompiler) (LGPLv3); `wav2wem.exe` is GPLv2 from [pas2k/wav2wem](https://github.com/pas2k/wav2wem), run as a separate process (see `host/tools/NOTICE.txt`). Mods come from [GameBanana](https://gamebanana.com/games/5704).
