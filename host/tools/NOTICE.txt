@@ -1,0 +1,2 @@
+wav2wem.exe is GPLv2 from https://github.com/pas2k/wav2wem
+Source is that repository. BrawlEngine runs it as a separate process and does not link it.

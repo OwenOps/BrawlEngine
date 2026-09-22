@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -7,6 +7,8 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>BrawlEngine.Host</RootNamespace>
+    <AssemblyName>BrawlEngine</AssemblyName>
+    <Version>0.6.0</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
@@ -23,6 +25,22 @@
     <Content Include="Assets\app.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="Infrastructure\Ffdec\java\SkinApply.java">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>SkinApply.java</Link>
+    </Content>
+    <Content Include="tools\wav2wem.exe" Condition="Exists('tools\wav2wem.exe')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>tools\wav2wem.exe</Link>
+    </Content>
+    <Content Include="tools\NOTICE.txt" Condition="Exists('tools\NOTICE.txt')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>tools\NOTICE.txt</Link>
+    </Content>
   </ItemGroup>
+
+  <Target Name="CreateDesktopShortcut" AfterTargets="PostBuildEvent" Condition="'$(Configuration)' == 'Release'">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -Command &quot;$exe = '$(TargetDir)$(TargetName).exe'; $ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) '$(TargetName).lnk')); $s.TargetPath = $exe; $s.WorkingDirectory = [IO.Path]::GetDirectoryName($exe); $s.IconLocation = $exe; $s.Save()&quot;" />
+  </Target>
 
 </Project>

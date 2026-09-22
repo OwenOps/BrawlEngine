@@ -4,7 +4,14 @@ namespace BrawlEngine.Host.Infrastructure.Apply;
 
 public static class WwiseDidx
 {
+    public readonly record struct MediaIndex(uint Id, uint Offset, uint Size);
+
     public static IReadOnlyList<uint> ReadMediaIds(string bnkPath)
+    {
+        return ReadEntries(bnkPath).Select(entry => entry.Id).ToList();
+    }
+
+    public static IReadOnlyList<MediaIndex> ReadEntries(string bnkPath)
     {
         using var stream = File.OpenRead(bnkPath);
         using var reader = new BinaryReader(stream);
@@ -20,16 +27,14 @@ public static class WwiseDidx
 
             if (tag == "DIDX")
             {
-                var ids = new List<uint>();
+                var list = new List<MediaIndex>();
                 var count = size / 12;
                 for (var i = 0; i < count; i++)
                 {
-                    ids.Add(reader.ReadUInt32());
-                    reader.ReadUInt32();
-                    reader.ReadUInt32();
+                    list.Add(new MediaIndex(reader.ReadUInt32(), reader.ReadUInt32(), reader.ReadUInt32()));
                 }
 
-                return ids;
+                return list;
             }
 
             stream.Position = body + size;
