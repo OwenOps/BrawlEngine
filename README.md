@@ -6,6 +6,14 @@ I built it because I wanted something that looks like a modern app, and because 
 
 Unofficial. Not affiliated with Blue Mammoth Games.
 
+## Screenshots
+
+![Maps tab](docs/screenshots/maps.png)
+
+![Skins tab](docs/screenshots/skins.png)
+
+![Audio tab](docs/screenshots/audio.png)
+
 ## What it does
 
 - Lists GameBanana Realms, Legend Skins, and Sounds (catalog can be slow; that is their API).
