@@ -42,7 +42,9 @@ Cosmetic mods are a community thing. Tournaments have their own rules. This app 
 
 ## Audio
 
-Packs whose files match vanilla `.wem` / `.bnk` names can Apply. Old **Sound.swf** UI / weapon packs cannot: current Brawlhalla dropped those files.
+**Custom audio** (replace a theme with your own MP3) is **hidden for now**. Brawlhalla dropped the old `mp3` files; converting to `.wem` did not change what the game plays, so that UI is off until there is a real fix.
+
+Old **Sound.swf** UI / weapon packs cannot Apply — those files are gone from the game. A GameBanana pack is only copied in when its filenames already match vanilla `.wem` / `.bnk`.
 
 ## Build from source
 
@@ -58,5 +60,3 @@ Zip `dist\BrawlEngine`. Do not ship `bin\Release` — that build needs the .NET 
 ## Credits
 
 Mods come from [GameBanana](https://gamebanana.com/games/5704). Skin apply uses [JPEXS `ffdec_lib`](https://github.com/jindrapetrik/jpexs-decompiler) (LGPLv3). `wav2wem.exe` is GPLv2 from [pas2k/wav2wem](https://github.com/pas2k/wav2wem), run as a separate process (see `host/tools/NOTICE.txt`).
-
-Made by Owen. Issues and source: [github.com/OwenOps/BrawlEngine](https://github.com/OwenOps/BrawlEngine). Discord: `owenops`.
