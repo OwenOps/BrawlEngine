@@ -39,8 +39,4 @@
     </Content>
   </ItemGroup>
 
-  <Target Name="CreateDesktopShortcut" AfterTargets="PostBuildEvent" Condition="'$(Configuration)' == 'Release'">
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -Command &quot;$exe = '$(TargetDir)$(TargetName).exe'; $ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) '$(TargetName).lnk')); $s.TargetPath = $exe; $s.WorkingDirectory = [IO.Path]::GetDirectoryName($exe); $s.IconLocation = $exe; $s.Save()&quot;" />
-  </Target>
-
 </Project>

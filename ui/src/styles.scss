@@ -1076,6 +1076,28 @@ button.skin-target {
   border-radius: var(--radius);
 }
 
+.tools-banner {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  background: var(--bg-panel);
+  border: 1px solid color-mix(in srgb, var(--warn) 50%, var(--border));
+  border-radius: var(--radius);
+}
+
+.tools-banner-title {
+  margin: 0 0 0.3rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.tools-banner .hint {
+  margin: 0 0 0.35rem;
+}
+
+.tools-banner .sheet-actions {
+  margin-top: 0.55rem;
+}
+
 @media (max-width: 900px) {
   .grid {
     grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr));

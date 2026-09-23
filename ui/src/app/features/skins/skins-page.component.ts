@@ -38,7 +38,7 @@ import { IpcEnvelope, IpcService } from '../../core/ipc/ipc.service';
 import { LoadoutService } from '../../core/loadout/loadout.service';
 import { LikesService } from '../../core/likes/likes.service';
 import { CrashesService } from '../../core/crashes/crashes.service';
-import { GAMEBANANA_WAIT, LIBRARY_WAIT } from '../../core/ui/app-shell.constants';
+import { GAMEBANANA_WAIT, JAVA_DOWNLOAD_URL, LIBRARY_WAIT } from '../../core/ui/app-shell.constants';
 import { SKIN_LEGENDS } from './skin-legends';
 
 @Component({
@@ -494,6 +494,10 @@ export class SkinsPageComponent implements OnDestroy {
 
   retryTools(): void {
     this.loadTools();
+  }
+
+  openJavaDownload(): void {
+    this.browser.open(JAVA_DOWNLOAD_URL);
   }
 
   private pickTools(kind: 'java'): void {

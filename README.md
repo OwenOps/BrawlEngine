@@ -34,9 +34,9 @@ Maps and most audio packs do not need Java.
 
 ## Install
 
-No installer. Publish is a zip: extract it anywhere and run `BrawlEngine.exe`.
+No installer. Pack a zip with `scripts\pack-release.ps1`. Extract **the whole folder**. You get `BrawlEngine.lnk` next to `app\` — double-click the shortcut (do not open `app\` to hunt among DLLs).
 
-Settings, library cards, and backups live under `%LocalAppData%\BrawlEngine`. Downloaded archives go in the Mods folder (default next to that, or a folder you pick).
+Downloaded maps / skins / audio are **not** in the zip. They live under `%LocalAppData%\BrawlEngine` (or the Mods folder you pick). If a new PC already shows On disk cards, that folder still has old files — they did not come from the zip.
 
 Windows may say **Unknown publisher**. That is an unsigned exe, not a virus scan by itself. More info → Run anyway. If SmartScreen bothers you, download the zip from [GitHub Releases](https://github.com/OwenOps/BrawlEngine/releases) and check [VirusTotal](https://www.virustotal.com) yourself.
 
@@ -67,16 +67,13 @@ Do not ship `bin\Release` — that build needs the .NET 10 runtime on the PC.
 
 ### GitHub Release (zip)
 
-From the repo root, after the publish above:
+From the repo root:
 
 ```powershell
-if (Test-Path dist\BrawlEngine-0.6.0-win-x64.zip) { Remove-Item dist\BrawlEngine-0.6.0-win-x64.zip }
-Compress-Archive -Path dist\BrawlEngine -DestinationPath dist\BrawlEngine-0.6.0-win-x64.zip
-git push origin main
-gh release create v0.6.0 dist\BrawlEngine-0.6.0-win-x64.zip --title "BrawlEngine 0.6.0 (beta)" --notes "First public beta. Extract the zip and run BrawlEngine.exe. Windows may warn about an unknown publisher."
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pack-release.ps1
 ```
 
-A Release `dotnet publish` also drops a `BrawlEngine.lnk` on **your** desktop (post-build). You can delete that shortcut; it is not inside the zip.
+That builds the UI, publishes self-contained, **strips Maps / sounds / skins / mods** if they snuck into the publish folder, writes `BrawlEngine.lnk` next to `app\`, and zips `dist\BrawlEngine-<version>-win-x64.zip`.
 
 Bump `<Version>` in `host/BrawlEngine.Host.csproj` before the next tag (`v0.6.1`, …) so the in-app update check can see it.
 

@@ -21,6 +21,9 @@ export const RESET_WAIT = 'Resetting… This can take a minute.';
 
 export const GAMEBANANA_GAME_URL = 'https://gamebanana.com/games/5704';
 
+/** Adoptium JRE for Windows — skins Apply needs java.exe. */
+export const JAVA_DOWNLOAD_URL = 'https://adoptium.net/temurin/releases/?os=windows&package=jre';
+
 export const SOURCE_REPO_URL = 'https://github.com/OwenOps/BrawlEngine';
 
 /** Discord username (not a server invite). Click copies it. */

@@ -24,25 +24,6 @@
         Apply selected…
       </button>
     </div>
-    @if (toolsLoading()) {
-      <p class="hint">Getting ffdec_lib.jar…</p>
-    } @else {
-      @if (tools(); as toolsStatus) {
-        @if (toolsStatus.ready) {
-          <p class="hint">Java and ffdec_lib.jar ready.</p>
-        } @else {
-          <p class="error">{{ toolsStatus.error }}</p>
-          <div class="actions-row">
-            @if (!toolsStatus.javaPath) {
-              <button type="button" (click)="pickJava()" [disabled]="pickingTools()">
-                Choose java.exe
-              </button>
-            }
-            <button type="button" (click)="retryTools()" [disabled]="toolsLoading()">Retry</button>
-          </div>
-        }
-      }
-    }
   </div>
   @if (isLibrary()) {
     <p class="count">{{ shownItems().length }} {{ libraryStatusLabel(libraryFilter()) }}</p>
@@ -50,6 +31,39 @@
     <p class="count">{{ totalCount() }} skins</p>
   }
 </header>
+
+@if (toolsLoading()) {
+  <div class="tools-banner" role="status">
+    <p class="tools-banner-title">Setting up skin tools…</p>
+    <p class="hint">Downloading the JPEXS library. Java stays on this PC.</p>
+  </div>
+} @else {
+  @if (tools(); as toolsStatus) {
+    @if (!toolsStatus.ready) {
+      <div class="tools-banner" role="status">
+        <p class="tools-banner-title">Java is needed to Apply skins</p>
+        <p class="hint">
+          Maps and audio still work. Install a JRE (11 or newer), or point to java.exe.
+          ffdec_lib.jar downloads by itself after Java is found.
+        </p>
+        @if (toolsStatus.error; as detail) {
+          <p class="hint">{{ detail }}</p>
+        }
+        <div class="sheet-actions">
+          <button type="button" class="primary" (click)="openJavaDownload()">Get Java</button>
+          @if (!toolsStatus.javaPath) {
+            <button type="button" (click)="pickJava()" [disabled]="pickingTools()">
+              Choose java.exe
+            </button>
+          }
+          <button type="button" (click)="retryTools()" [disabled]="toolsLoading() || pickingTools()">
+            Retry
+          </button>
+        </div>
+      </div>
+    }
+  }
+}
 
 <div class="catalog-tools">
   <input
