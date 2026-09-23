@@ -34,7 +34,7 @@ Maps and most audio packs do not need Java.
 
 ## Install
 
-No installer. Pack a zip with `scripts\pack-release.ps1`. Extract **the whole folder**. Double-click `BrawlEngine.exe` next to `app\` (do not open `app\` to hunt among DLLs). Keep those two together if you move the folder. To put it on the Desktop, right-click that exe → Send to → Desktop (create shortcut).
+No installer. Pack a zip with `scripts\pack-release.ps1`. Extract the folder and double-click **BrawlEngine.exe** (you can move that file). Mods stay under `%LocalAppData%\BrawlEngine`. The first launch may pause while Windows unpacks into `%TEMP%\.net\` — a Starting… screen follows.
 
 Downloaded maps / skins / audio are **not** in the zip. They live under `%LocalAppData%\BrawlEngine` (or the Mods folder you pick). If a new PC already shows On disk cards, that folder still has old files — they did not come from the zip.
 
@@ -73,7 +73,7 @@ From the repo root:
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pack-release.ps1
 ```
 
-That builds the UI, publishes self-contained, **strips Maps / sounds / skins / mods** if they snuck into the publish folder, writes a small `BrawlEngine.exe` (app icon) next to `app\`, and zips `dist\BrawlEngine-<version>-win-x64.zip`.
+That builds the UI, publishes a **single-file** self-contained `BrawlEngine.exe`, **strips Maps / sounds / skins / mods** if they snuck into the publish folder, and zips `dist\BrawlEngine-<version>-win-x64.zip`.
 
 Bump `<Version>` in `host/BrawlEngine.Host.csproj` before the next tag (`v0.6.1`, …) so the in-app update check can see it.
 

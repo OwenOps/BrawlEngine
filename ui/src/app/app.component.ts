@@ -1,4 +1,5 @@
 import {
+  AfterViewInit,
   ChangeDetectionStrategy,
   Component,
   HostListener,
@@ -39,7 +40,7 @@ import { SkinsPageComponent } from './features/skins/skins-page.component';
   styleUrl: './app.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class AppComponent implements OnDestroy {
+export class AppComponent implements AfterViewInit, OnDestroy {
   private readonly ipc = inject(IpcService);
   private readonly loadout = inject(LoadoutService);
   private readonly browser = inject(BrowserService);
@@ -102,6 +103,10 @@ export class AppComponent implements OnDestroy {
     this.refreshGame();
     this.refreshRunning();
     this.runningTimer = setInterval(() => this.refreshRunning(), 2000);
+  }
+
+  ngAfterViewInit(): void {
+    document.getElementById('boot')?.remove();
   }
 
   ngOnDestroy(): void {

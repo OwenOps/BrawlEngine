@@ -1,7 +1,6 @@
 # Pack a self-contained Windows zip (repo root).
 # Does not include Maps / sounds / skins / mods (those live in LocalAppData).
-# Zip layout: BrawlEngine.exe (tiny stub + app icon) + app\
-# A .lnk icon is an absolute path from this PC; it is blank on another machine.
+# Zip layout: one BrawlEngine.exe (PublishSingleFile). Natives extract to %TEMP%\.net\…
 
 param(
     [string]$Version = ""
@@ -26,7 +25,6 @@ $hostDir = Join-Path $root "host"
 $dist = Join-Path $root "dist"
 $stageName = "BrawlEngine-$Version-win-x64"
 $stage = Join-Path $dist $stageName
-$app = Join-Path $stage "app"
 $zip = Join-Path $dist "$stageName.zip"
 
 Write-Host "UI build…"
@@ -45,10 +43,15 @@ if (Test-Path $stage) {
     Remove-Item $stage -Recurse -Force
 }
 
-Write-Host "dotnet publish → $app"
+Write-Host "dotnet publish (single-file) → $stage"
 Push-Location $hostDir
 try {
-    dotnet publish -c Release -r win-x64 --self-contained true -p:DebugType=None -o $app
+    dotnet publish -c Release -r win-x64 --self-contained true `
+        -p:DebugType=None `
+        -p:PublishSingleFile=true `
+        -p:IncludeNativeLibrariesForSelfExtract=true `
+        -p:IncludeAllContentForSelfExtract=true `
+        -o $stage
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet publish failed"
     }
@@ -58,29 +61,14 @@ finally {
 }
 
 foreach ($name in @("Maps", "sounds", "skins", "mods", "library", "backups")) {
-    $junk = Join-Path $app $name
+    $junk = Join-Path $stage $name
     if (Test-Path $junk) {
         Write-Host "Removing $name from the zip (user downloads do not ship)."
         Remove-Item $junk -Recurse -Force
     }
 }
 
-Get-ChildItem $app -Filter *.pdb -ErrorAction SilentlyContinue | Remove-Item -Force
-
-$csc = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-if (-not (Test-Path $csc)) {
-    throw "csc.exe not found at $csc"
-}
-
-$stub = Join-Path $stage "BrawlEngine.exe"
-$ico = Join-Path $root "host\Assets\app.ico"
-$src = Join-Path $root "scripts\LaunchBrawlEngine.cs"
-$winforms = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\System.Windows.Forms.dll"
-Write-Host "Launcher stub → $stub"
-& $csc /nologo /target:winexe "/win32icon:$ico" "/reference:$winforms" "/out:$stub" $src
-if ($LASTEXITCODE -ne 0) {
-    throw "csc launcher failed"
-}
+Get-ChildItem $stage -Filter *.pdb -ErrorAction SilentlyContinue | Remove-Item -Force
 
 Write-Host "Zipping $zip"
 Add-Type -AssemblyName System.IO.Compression
@@ -108,4 +96,4 @@ finally {
 }
 
 Write-Host "Done. $zip"
-Write-Host "Extract the folder and double-click BrawlEngine.exe (next to app\)."
+Write-Host "Extract the folder and double-click BrawlEngine.exe."
