@@ -22,6 +22,8 @@ public static class AppPaths
 
     public static string AudioChangesFile => Path.Combine(Root, "audio-changes.json");
 
+    public static string BrawlhallaLegendsFile => Path.Combine(Root, "brawlhalla-legends.json");
+
     public static string DefaultDownloadsRoot => Path.Combine(Root, "mods");
 
     public static string LegacyDefaultDownloadsRoot => Path.Combine(Root, "downloads");

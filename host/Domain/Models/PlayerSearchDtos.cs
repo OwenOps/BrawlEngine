@@ -19,7 +19,9 @@ public sealed record PlayerSearchPageDto(
     IReadOnlyList<PlayerSearchMatchDto> Matches,
     string Query,
     string GameMode,
-    int TotalPages = 1);
+    int TotalPages = 1,
+    string? Warning = null,
+    string? LogPath = null);
 
 public sealed record PlayerRankedDto(
     string GameMode,

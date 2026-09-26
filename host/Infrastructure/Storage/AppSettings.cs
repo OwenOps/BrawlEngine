@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using BrawlEngine.Host.Domain.Models;
 
 namespace BrawlEngine.Host.Infrastructure.Storage;
 
@@ -19,6 +20,15 @@ public sealed class AppSettings
 
     [JsonPropertyName("downloadsPath")]
     public string? DownloadsPath { get; set; }
+
+    [JsonPropertyName("statsRecents")]
+    public List<StatsRecentDto> StatsRecents { get; set; } = [];
+
+    [JsonPropertyName("statsPins")]
+    public List<StatsRecentDto> StatsPins { get; set; } = [];
+
+    [JsonPropertyName("statsMine")]
+    public StatsRecentDto? StatsMine { get; set; }
 
     public static AppSettings Load()
     {
