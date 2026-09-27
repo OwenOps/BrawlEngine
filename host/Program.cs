@@ -12,6 +12,7 @@ internal static class Program
     private static void Main(string[] args)
     {
         var uiPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", "index.html");
+
         if (!File.Exists(uiPath))
         {
             throw new FileNotFoundException(
@@ -34,6 +35,7 @@ internal static class Program
             .Center()
             .SetResizable(true)
             .SetIconFile(iconPath)
+
             // Stable id so Windows does not keep a first-run blank taskbar icon keyed on the title.
             .SetNotificationRegistrationId("3f8a2c61-9d4e-4b17-8a90-7c1e5d2f4a08")
             .SetNotificationsEnabled(false)
@@ -88,6 +90,7 @@ internal static class Program
         var maxH = Math.Max(1, (int)Math.Round(area.Height * scale));
         var minW = Math.Min((int)Math.Round(800 * scale), maxW);
         var minH = Math.Min((int)Math.Round(560 * scale), maxH);
+        
         return new Size(
             Math.Clamp((int)Math.Round(area.Width * scale * 0.6), minW, maxW),
             Math.Clamp((int)Math.Round(area.Height * scale * 0.6), minH, maxH));
@@ -106,6 +109,7 @@ internal static class Program
             TopMost = true,
             Text = "BrawlEngine",
         };
+
         if (File.Exists(iconPath))
         {
             form.Icon = new Icon(iconPath);
@@ -119,6 +123,7 @@ internal static class Program
             TextAlign = ContentAlignment.MiddleCenter,
             Font = new Font("Segoe UI", 14f, FontStyle.Regular),
         });
+
         form.Show();
         Application.DoEvents();
         return form;

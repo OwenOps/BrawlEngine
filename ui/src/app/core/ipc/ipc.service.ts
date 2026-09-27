@@ -115,6 +115,9 @@ export class IpcService {
     if (type.startsWith('catalog.')) {
       return 90000;
     }
+    if (type.startsWith('stats.')) {
+      return 45000;
+    }
     return 25000;
   }
 

@@ -1,5 +1,6 @@
 using BrawlEngine.Host.Domain.Models;
 using BrawlEngine.Host.Infrastructure.Apply;
+using BrawlEngine.Host.Infrastructure.Brawlhalla;
 using BrawlEngine.Host.Infrastructure.Ffdec;
 using BrawlEngine.Host.Infrastructure.GameBanana;
 using BrawlEngine.Host.Infrastructure.Processes;
@@ -43,6 +44,7 @@ public static class IpcRouter
                 Ok = false,
                 Error = "Invalid JSON: " + ex.Message,
             }, JsonOptions));
+            
             return;
         }
 
@@ -58,6 +60,11 @@ public static class IpcRouter
             "catalog.sounds" => CatalogSounds(request),
             "catalog.skins" => CatalogSkins(window, request),
             "catalog.byIds" => CatalogByIds(request),
+            "stats.search" => StatsSearch(request),
+            "stats.player" => StatsPlayer(request),
+            "stats.recents" => StatsRecents(request),
+            "stats.pin" => StatsPin(request),
+            "stats.mine" => StatsMine(request),
             "browser.open" => OpenUrl(request),
             "folder.open" => OpenFolder(request),
             "mod.download" => DownloadMod(window, request),
@@ -1198,6 +1205,203 @@ public static class IpcRouter
         {
             CatalogLibrary.Remember(kind, item);
         }
+    }
+
+    private static IpcEnvelope StatsSearch(IpcEnvelope request)
+    {
+        var query = "";
+        var gameMode = "1v1";
+        var region = "ALL";
+        var tier = "all";
+        var page = 1;
+        var ascending = false;
+        if (request.Payload is { } payload && payload.ValueKind == JsonValueKind.Object)
+        {
+            if (payload.TryGetProperty("query", out var queryEl))
+            {
+                query = queryEl.GetString() ?? "";
+            }
+
+            if (payload.TryGetProperty("gameMode", out var modeEl))
+            {
+                gameMode = modeEl.GetString() ?? "1v1";
+            }
+
+            if (payload.TryGetProperty("region", out var regionEl))
+            {
+                region = regionEl.GetString() ?? "ALL";
+            }
+
+            if (payload.TryGetProperty("tier", out var tierEl))
+            {
+                tier = tierEl.GetString() ?? "all";
+            }
+
+            if (payload.TryGetProperty("page", out var pageEl) && pageEl.TryGetInt32(out var parsedPage))
+            {
+                page = parsedPage;
+            }
+
+            if (payload.TryGetProperty("ascending", out var ascEl) && ascEl.ValueKind == JsonValueKind.True)
+            {
+                ascending = true;
+            }
+        }
+
+        try
+        {
+            var result = PlayerSearchClient.SearchAsync(query, gameMode, region, page, tier, ascending)
+                .GetAwaiter()
+                .GetResult();
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = true,
+                Payload = JsonSerializer.SerializeToElement(result, JsonOptions),
+            };
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException or OperationCanceledException)
+        {
+            Debug.WriteLine(request.Type + ": " + ex);
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = false,
+                Error = PlayerSearchClient.LoadError,
+            };
+        }
+    }
+
+    private static IpcEnvelope StatsPlayer(IpcEnvelope request)
+    {
+        var id = 0;
+        var name = "";
+        if (request.Payload is { } payload && payload.ValueKind == JsonValueKind.Object)
+        {
+            if (payload.TryGetProperty("id", out var idEl) && idEl.TryGetInt32(out var parsed))
+            {
+                id = parsed;
+            }
+
+            if (payload.TryGetProperty("name", out var nameEl))
+            {
+                name = nameEl.GetString() ?? "";
+            }
+        }
+
+        if (id <= 0)
+        {
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = false,
+                Error = "Missing player id.",
+            };
+        }
+
+        try
+        {
+            var profile = PlayerProfileClient.GetAsync(id, name).GetAwaiter().GetResult();
+            try
+            {
+                StatsRecentStore.Remember(profile.Id, profile.Name);
+            }
+            catch (IOException)
+            {
+            }
+
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = true,
+                Payload = JsonSerializer.SerializeToElement(profile, JsonOptions),
+            };
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException or OperationCanceledException)
+        {
+            Debug.WriteLine(request.Type + ": " + ex);
+            var message = ex is HttpRequestException && ex.Message == "Player not found."
+                ? ex.Message
+                : PlayerSearchClient.LoadError;
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = false,
+                Error = message,
+            };
+        }
+    }
+
+    private static IpcEnvelope StatsRecents(IpcEnvelope request)
+    {
+        return new IpcEnvelope
+        {
+            Id = request.Id,
+            Type = request.Type,
+            Ok = true,
+            Payload = JsonSerializer.SerializeToElement(StatsRecentStore.Snapshot(), JsonOptions),
+        };
+    }
+
+    private static IpcEnvelope StatsPin(IpcEnvelope request)
+    {
+        var (id, name) = ReadStatsPlayer(request);
+        if (id <= 0)
+        {
+            return new IpcEnvelope
+            {
+                Id = request.Id,
+                Type = request.Type,
+                Ok = false,
+                Error = "Missing player id.",
+            };
+        }
+
+        return new IpcEnvelope
+        {
+            Id = request.Id,
+            Type = request.Type,
+            Ok = true,
+            Payload = JsonSerializer.SerializeToElement(StatsRecentStore.TogglePin(id, name), JsonOptions),
+        };
+    }
+
+    private static IpcEnvelope StatsMine(IpcEnvelope request)
+    {
+        var (id, name) = ReadStatsPlayer(request);
+        var mine = StatsRecentStore.SetMine(id, name);
+        return new IpcEnvelope
+        {
+            Id = request.Id,
+            Type = request.Type,
+            Ok = true,
+            Payload = JsonSerializer.SerializeToElement(mine, JsonOptions),
+        };
+    }
+
+    private static (int Id, string Name) ReadStatsPlayer(IpcEnvelope request)
+    {
+        var id = 0;
+        var name = "";
+        if (request.Payload is { } payload && payload.ValueKind == JsonValueKind.Object)
+        {
+            if (payload.TryGetProperty("id", out var idEl) && idEl.TryGetInt32(out var parsed))
+            {
+                id = parsed;
+            }
+
+            if (payload.TryGetProperty("name", out var nameEl))
+            {
+                name = nameEl.GetString() ?? "";
+            }
+        }
+
+        return (id, name);
     }
 
     private static IpcEnvelope CatalogMaps(IpcEnvelope request)
