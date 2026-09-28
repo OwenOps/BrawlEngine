@@ -1,0 +1,257 @@
+$tiers: (
+  'tin': #9aa4ad,
+  'bronze': #c8823c,
+  'silver': #c3ccd9,
+  'gold': #e8b93a,
+  'platinum': #4f9dff,
+  'diamond': #9b7dff,
+);
+
+@each $key, $color in $tiers {
+  .t-#{$key} {
+    --tier: #{$color};
+  }
+}
+
+.recents {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.9rem;
+}
+
+.mine-chip {
+  border-color: var(--page-accent, var(--accent));
+  color: var(--page-accent, var(--accent));
+}
+
+.profile-head .link {
+  margin-left: 0.4rem;
+}
+
+.player-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.6rem;
+  margin: 0.2rem 0 1.1rem;
+}
+
+.player-card,
+.ranked-card {
+  padding: 0.55rem 0.65rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--tier, var(--page-accent, var(--border)));
+  border-radius: var(--radius-sm);
+}
+
+.player-card {
+  cursor: pointer;
+}
+
+.player-card:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--tier, var(--page-accent, var(--border)));
+}
+
+.ranked-card {
+  background: var(--bg-panel);
+}
+
+/* Every line in a card is a <p>: kill the default paragraph margins. */
+.player-card p,
+.ranked-card p {
+  margin: 0;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  min-height: 1.6rem;
+}
+
+.player-name {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mode-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.card-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.2rem;
+}
+
+.icon-pin {
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.icon-pin:hover:not(:disabled),
+.icon-pin.is-liked {
+  color: #f4a4b8;
+  border-color: #f4a4b8;
+}
+
+.icon-pin.is-mine {
+  color: var(--page-accent, var(--accent));
+  border-color: var(--page-accent, var(--accent));
+}
+
+.elo-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin-top: 0.15rem;
+}
+
+.player-elo {
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--tier, var(--text));
+}
+
+.tier-tag {
+  padding: 0.05rem 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--tier, var(--border)) 45%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tier, var(--border)) 16%, transparent);
+  color: var(--tier, var(--muted));
+  font-size: 0.65rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.1rem 0.45rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.region {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.flag {
+  display: inline-block;
+  width: 0.95rem;
+  height: 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 2px;
+  background: linear-gradient(135deg, #3a4150, #262b34);
+}
+
+.flag[data-region='EU'] {
+  background: radial-gradient(circle at 50% 50%, #ffcc00 0 26%, transparent 27%), #003399;
+}
+
+.flag[data-region='US-E'],
+.flag[data-region='US-W'] {
+  background:
+    linear-gradient(#3c3b6e 0 0) 0 0 / 42% 55% no-repeat,
+    repeating-linear-gradient(#b22234 0 20%, #fff 20% 40%);
+}
+
+.flag[data-region='BRZ'] {
+  background: radial-gradient(circle at 50% 50%, #ffdf00 0 38%, transparent 39%), #009b3a;
+}
+
+.flag[data-region='AUS'] {
+  background: radial-gradient(circle at 70% 62%, #fff 0 16%, transparent 17%), #00247d;
+}
+
+.flag[data-region='JPS'] {
+  background: radial-gradient(circle at 50% 50%, #bc002d 0 33%, #fff 34%);
+}
+
+.flag[data-region='SA'] {
+  background:
+    linear-gradient(90deg, #007a4d 0 30%, transparent 30%),
+    linear-gradient(#de3831 0 33%, #fff 33% 67%, #002395 67%);
+}
+
+.flag[data-region='SEA'] {
+  background: linear-gradient(135deg, #2bb3a5, #17636f);
+}
+
+.flag[data-region='ME'] {
+  background: linear-gradient(135deg, #e0c088, #9c7b3f);
+}
+
+.profile {
+  margin: 0.2rem 0 1.1rem;
+  padding: 0.9rem 1rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--page-accent, var(--border));
+  border-radius: var(--radius);
+}
+
+.profile-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.35rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.profile-head h2 {
+  margin: 0 0 0.2rem;
+  font-size: 1.15rem;
+}
+
+.profile-head p,
+.legend-list {
+  margin: 0;
+}
+
+.lifetime {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.legends-title {
+  margin: 0.9rem 0 0.3rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.legend-list {
+  padding: 0;
+  list-style: none;
+}
+
+.legend-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.3rem 0;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+}
