@@ -1,0 +1,378 @@
+<header class="page-head">
+  <div>
+    <h1>Stats</h1>
+    <p class="hint">Search a player, pin profiles, or browse the ranked board.</p>
+  </div>
+  @if (!isSaved() && searched() && !loading() && !error() && !profile()) {
+    <p class="count">{{ shown().length }} players</p>
+  }
+</header>
+
+<div class="catalog-tools">
+  <input
+    type="search"
+    aria-label="Search player"
+    placeholder="Name, #id, Steam id, or player URL"
+    [value]="queryInput()"
+    (input)="onQueryInput($event)"
+    (keydown)="onSearchKey($event)"
+  />
+</div>
+
+@if (!hasOpened) {
+  <div class="recents">
+    <button
+      type="button"
+      class="chip"
+      [class.active]="feed() === 'saved'"
+      [attr.aria-pressed]="feed() === 'saved'"
+      (click)="setFeed('saved')"
+    >
+      Pinned
+    </button>
+    <button
+      type="button"
+      class="chip"
+      [class.active]="feed() === 'board'"
+      [attr.aria-pressed]="feed() === 'board'"
+      (click)="setFeed('board')"
+    >
+      Board
+    </button>
+    @if (mine(); as me) {
+      <button type="button" class="chip mine-chip" (click)="openRecent(me)">★ {{ me.name }}</button>
+    }
+  </div>
+
+  @if (!isSaved()) {
+    <div class="catalog-tools">
+      <label>
+        Mode
+        <select [value]="gameMode()" [disabled]="loading()" (change)="onGameMode($event)">
+          @for (mode of modes; track mode) {
+            <option [value]="mode">{{ mode }}</option>
+          }
+        </select>
+      </label>
+      <label>
+        Region
+        <select [value]="regionFilter()" [disabled]="loading()" (change)="onRegion($event)">
+          @for (code of regions; track code) {
+            <option [value]="code">{{ regionLabel(code) }}</option>
+          }
+        </select>
+      </label>
+      <label>
+        Rank
+        <select
+          [value]="rankFilter()"
+          [disabled]="loading() || queryInput().trim().length >= 2"
+          (change)="onRank($event)"
+        >
+          @for (rank of ranks; track rank) {
+            <option [value]="rank">{{ rankLabel(rank) }}</option>
+          }
+        </select>
+      </label>
+      <label>
+        Sort
+        <select [value]="sort()" [disabled]="loading()" (change)="onSort($event)">
+          @for (option of sorts; track option.id) {
+            <option [value]="option.id">{{ option.label }}</option>
+          }
+        </select>
+      </label>
+      <div class="slot-filters">
+        <button
+          type="button"
+          class="chip"
+          [class.active]="!sortAsc()"
+          [disabled]="loading()"
+          [attr.aria-pressed]="!sortAsc()"
+          title="Top of the rank first"
+          (click)="setSortDir(false)"
+        >
+          Highest
+        </button>
+        <button
+          type="button"
+          class="chip"
+          [class.active]="sortAsc()"
+          [disabled]="loading()"
+          [attr.aria-pressed]="sortAsc()"
+          title="Bottom of the rank first"
+          (click)="setSortDir(true)"
+        >
+          Lowest
+        </button>
+      </div>
+    </div>
+  }
+}
+
+@if (recents().length > 0 && !hasOpened) {
+  <div class="recents">
+    <span class="filter-label">Recents</span>
+    @for (row of recents(); track row.id) {
+      <button type="button" class="chip" (click)="openRecent(row)">{{ row.name }}</button>
+    }
+  </div>
+}
+
+@if (hasOpened) {
+  <button type="button" class="link" (click)="backToResults()">Back to results</button>
+}
+
+@if (error(); as errorMessage) {
+  <div class="error-block" role="alert">
+    <p class="error">{{ errorMessage }}</p>
+    <button type="button" (click)="retry()" [disabled]="loading()">Retry</button>
+  </div>
+}
+
+@if (!hasOpened && !error() && warning(); as warn) {
+  <div class="error-block" role="status">
+    <p class="error">{{ warn }}</p>
+    @if (logPath(); as path) {
+      <p class="hint">{{ path }}</p>
+    }
+    <button type="button" (click)="retry()" [disabled]="loading()">Retry</button>
+  </div>
+}
+
+@if (loading()) {
+  <div class="catalog-loader" role="status" aria-live="polite">
+    <span class="catalog-loader-spin" aria-hidden="true"></span>
+    <p>{{ hasOpened ? profileWait : wait }}</p>
+  </div>
+} @else if (!error()) {
+  @if (profile(); as card) {
+  <article class="profile">
+    <header class="profile-head">
+      <div>
+        <h2>{{ card.name }}</h2>
+        <p class="hint">
+          #{{ card.id }}
+          <button type="button" class="link" (click)="copyId(card.id)">
+            {{ copied() ? 'Copied' : 'Copy id' }}
+          </button>
+          @if (card.level != null) {
+            <span> · level {{ card.level }}</span>
+          }
+          @if (card.guildName) {
+            <span> · {{ card.guildName }}</span>
+          }
+        </p>
+      </div>
+      <p class="lifetime">
+        {{ card.games ?? 0 }} games
+        @if (playTime(card.playSeconds); as hours) {
+          <span class="hint"> · {{ hours }}</span>
+        }
+        <span class="hint"> · {{ winrate(card.wins, card.games) }} winrate</span>
+      </p>
+    </header>
+
+    <div class="player-grid">
+      @for (mode of modes; track mode) {
+        @if (ranked(mode); as row) {
+          <section [class]="cardClass(row.tier, row.rating, 'ranked-card')">
+            <p class="card-head">
+              <span class="mode-tag">{{ row.gameMode }}</span>
+              @if (tier(row.tier, row.rating); as label) {
+                <span class="tier-tag">{{ label }}</span>
+              }
+            </p>
+            <p class="player-elo">{{ row.rating ?? '—' }}</p>
+            <p class="card-meta">
+              @if (row.region) {
+                <span class="region" [title]="region(row.region)">
+                  <span class="flag" [attr.data-region]="row.region" aria-hidden="true"></span>
+                  {{ row.region }}
+                </span>
+              }
+              @if (row.rank != null) {
+                <span>#{{ row.rank }}</span>
+              }
+              @if (row.peakRating != null) {
+                <span>peak {{ row.peakRating }}</span>
+              }
+              @if (row.wins != null) {
+                <span>{{ row.wins }}–{{ row.losses ?? 0 }} · {{ winrate(row.wins, row.losses, true) }}</span>
+              }
+            </p>
+            @if (withNames(row.teammates); as duo) {
+              <p class="card-meta">{{ duo }}</p>
+            }
+          </section>
+        }
+      }
+    </div>
+
+    <h3 class="legends-title">Top legends</h3>
+    <ul class="legend-list">
+      @for (legend of card.legends; track legend.id) {
+        <li>
+          <span>{{ legend.name }}</span>
+          <span class="hint">
+            {{ legend.games }} games · {{ winrate(legend.wins, legend.games) }}
+            @if (legend.level != null) {
+              <span> · lv {{ legend.level }}</span>
+            }
+          </span>
+        </li>
+      } @empty {
+        <li><span class="hint">None yet</span></li>
+      }
+    </ul>
+  </article>
+  } @else if (isSaved()) {
+  <div class="player-grid">
+    @for (row of pins(); track row.id) {
+      <article
+        class="player-card"
+        role="button"
+        tabindex="0"
+        (click)="openRecent(row)"
+        (keydown.enter)="openRecent(row)"
+      >
+        <div class="card-head">
+          <span class="player-name" [title]="row.name">{{ row.name }}</span>
+          <span class="card-actions">
+            <button
+              type="button"
+              class="icon-pin"
+              [class.is-mine]="isMine(row.id)"
+              [attr.aria-pressed]="isMine(row.id)"
+              [title]="isMine(row.id) ? 'Not me' : 'This is me'"
+              (click)="toggleMine($event, row.id, row.name)"
+              (keydown)="$event.stopPropagation()"
+            >
+              {{ isMine(row.id) ? '★' : '☆' }}
+            </button>
+            <button
+              type="button"
+              class="icon-pin is-liked"
+              [attr.aria-label]="'Unpin ' + row.name"
+              title="Unpin"
+              (click)="togglePin($event, row.id, row.name)"
+              (keydown)="$event.stopPropagation()"
+            >
+              ♥
+            </button>
+          </span>
+        </div>
+        <p class="card-meta">#{{ row.id }}</p>
+      </article>
+    }
+  </div>
+  @if (pins().length === 0) {
+    <div class="empty-state">
+      <p class="hint">Tap the heart on a board card. Those players show up here next time.</p>
+    </div>
+  }
+  } @else if (shown().length > 0) {
+  <div class="player-grid">
+    @for (match of shown(); track match.id) {
+      <article
+        [class]="cardClass(match.tier, match.rating, 'player-card')"
+        role="button"
+        tabindex="0"
+        (click)="openProfile(match)"
+        (keydown.enter)="openProfile(match)"
+      >
+        <div class="card-head">
+          <span class="player-name" [title]="match.name">{{ match.name }}</span>
+          <span class="card-actions">
+            <button
+              type="button"
+              class="icon-pin"
+              [class.is-mine]="isMine(match.id)"
+              [attr.aria-pressed]="isMine(match.id)"
+              [title]="isMine(match.id) ? 'Not me' : 'This is me'"
+              (click)="toggleMine($event, match.id, match.name)"
+              (keydown)="$event.stopPropagation()"
+            >
+              {{ isMine(match.id) ? '★' : '☆' }}
+            </button>
+            <button
+              type="button"
+              class="icon-pin"
+              [class.is-liked]="isPinned(match.id)"
+              [attr.aria-pressed]="isPinned(match.id)"
+              [title]="isPinned(match.id) ? 'Unpin' : 'Pin'"
+              (click)="togglePin($event, match.id, match.name)"
+              (keydown)="$event.stopPropagation()"
+            >
+              {{ isPinned(match.id) ? '♥' : '♡' }}
+            </button>
+          </span>
+        </div>
+        <p class="card-meta">#{{ match.id }}</p>
+        <p class="elo-row">
+          <span class="player-elo">{{ match.rating ?? '—' }}</span>
+          @if (tier(match.tier, match.rating); as label) {
+            <span class="tier-tag">{{ label }}</span>
+          }
+        </p>
+        <p class="card-meta">
+          @if (match.region) {
+            <span class="region" [title]="region(match.region)">
+              <span class="flag" [attr.data-region]="match.region" aria-hidden="true"></span>
+              {{ match.region }}
+            </span>
+          }
+          @if (match.rank != null) {
+            <span>#{{ match.rank }}</span>
+          }
+          @if (match.wins != null) {
+            <span>{{ winrate(match.wins, match.losses, true) }} WR</span>
+          }
+        </p>
+        @if (withNames(match.teammates); as duo) {
+          <p class="card-meta">{{ duo }}</p>
+        }
+      </article>
+    }
+  </div>
+  @if (totalPages() > 1) {
+    <nav class="pager" aria-label="Player list pagination">
+      <button type="button" (click)="goToPage(page() - 1)" [disabled]="loading() || page() <= 1">
+        ‹ Prev
+      </button>
+      <label class="pager-jump">
+        Page
+        <input
+          type="number"
+          inputmode="numeric"
+          min="1"
+          [max]="totalPages()"
+          [value]="page()"
+          [disabled]="loading()"
+          aria-label="Go to page"
+          (change)="jumpToPage($event)"
+          (keydown.enter)="jumpToPage($event)"
+        />
+        of {{ totalPages() }}
+      </label>
+      <button type="button" (click)="goToPage(page() + 1)" [disabled]="loading() || page() >= totalPages()">
+        Next ›
+      </button>
+    </nav>
+  }
+  } @else if (searched() && !warning()) {
+  <div class="empty-state">
+    <p class="hint">
+      @if (queryInput().trim().length >= 2) {
+        No ranked player matches that name. Search still checks 1v1, 2v2, and 3v3. Paste a Brawlhalla id or player URL if they are unranked this season.
+      } @else {
+        No ranked matches for that filter. Try another region or rank, or paste a Brawlhalla / Steam id.
+      }
+    </p>
+  </div>
+  } @else {
+  <div class="empty-state">
+    <p class="hint">Loading the ranked leaderboard…</p>
+  </div>
+  }
+}
