@@ -8,11 +8,7 @@ Unofficial. Not affiliated with Blue Mammoth Games.
 
 ## Screenshots
 
-<img src="docs/screenshots/maps.png" alt="Maps tab" width="720">
-
 <img src="docs/screenshots/skins.png" alt="Skins tab" width="720">
-
-<img src="docs/screenshots/audio.png" alt="Audio tab" width="720">
 
 ## What it does
 
