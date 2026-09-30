@@ -8,6 +8,7 @@ export interface ThemePreset {
   accentMaps: string;
   accentMusic: string;
   accentSkins: string;
+  accentStats: string;
 }
 
 export const THEME_PRESETS: Record<ThemeName, ThemePreset> = {
@@ -17,6 +18,7 @@ export const THEME_PRESETS: Record<ThemeName, ThemePreset> = {
     accentMaps: '#4c8dff',
     accentMusic: '#b57bf6',
     accentSkins: '#ff9f5b',
+    accentStats: '#5ee0c8',
   },
   purple: {
     label: 'Purple',
@@ -24,6 +26,7 @@ export const THEME_PRESETS: Record<ThemeName, ThemePreset> = {
     accentMaps: '#a374f7',
     accentMusic: '#e17bf0',
     accentSkins: '#7bb8f7',
+    accentStats: '#7ae0d4',
   },
   green: {
     label: 'Green',
@@ -31,6 +34,7 @@ export const THEME_PRESETS: Record<ThemeName, ThemePreset> = {
     accentMaps: '#46c98a',
     accentMusic: '#8fd15a',
     accentSkins: '#2fb8a6',
+    accentStats: '#3dd4c8',
   },
   orange: {
     label: 'Orange',
@@ -38,6 +42,7 @@ export const THEME_PRESETS: Record<ThemeName, ThemePreset> = {
     accentMaps: '#ff9f43',
     accentMusic: '#ffb85c',
     accentSkins: '#f76b3c',
+    accentStats: '#2ec4c9',
   },
   red: {
     label: 'Red',
@@ -45,6 +50,7 @@ export const THEME_PRESETS: Record<ThemeName, ThemePreset> = {
     accentMaps: '#ef6a6a',
     accentMusic: '#c96ce0',
     accentSkins: '#ff8f70',
+    accentStats: '#5ee0c8',
   },
   teal: {
     label: 'Teal',
@@ -52,6 +58,7 @@ export const THEME_PRESETS: Record<ThemeName, ThemePreset> = {
     accentMaps: '#33c2c9',
     accentMusic: '#5ad1a0',
     accentSkins: '#3aa7e0',
+    accentStats: '#e6c35c',
   },
 };
 
@@ -80,6 +87,7 @@ export class ThemeService {
     root.setProperty('--accent-maps', preset.accentMaps);
     root.setProperty('--accent-music', preset.accentMusic);
     root.setProperty('--accent-skins', preset.accentSkins);
+    root.setProperty('--accent-stats', preset.accentStats);
   }
 
   private readStored(): ThemeName {

@@ -316,6 +316,11 @@
         <app-musics-page />
       </div>
     }
+    @if (visitedTabIds().has('stats')) {
+      <div class="tab-page" style="--page-accent: var(--accent-stats)" [hidden]="activeTabId() !== 'stats'">
+        <app-stats-page />
+      </div>
+    }
   </main>
 </div>
 

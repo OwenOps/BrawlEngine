@@ -32,10 +32,11 @@ import { THEME_PRESETS, ThemeName, ThemeService } from './core/theme/theme.servi
 import { MapsPageComponent } from './features/maps/maps-page.component';
 import { MusicsPageComponent } from './features/musics/musics-page.component';
 import { SkinsPageComponent } from './features/skins/skins-page.component';
+import { StatsPageComponent } from './features/stats/stats-page.component';
 
 @Component({
   selector: 'app-root',
-  imports: [MapsPageComponent, MusicsPageComponent, SkinsPageComponent],
+  imports: [MapsPageComponent, MusicsPageComponent, SkinsPageComponent, StatsPageComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -18,6 +18,14 @@
     <PackageReference Include="SharpCompress" Version="0.50.4" />
   </ItemGroup>
 
+  <!-- After Release build: refresh Desktop\BrawlEngine.lnk → this output exe. -->
+  <Target Name="CopyReleaseToDesktop" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+    <PropertyGroup>
+      <_DesktopCopySource>$([System.String]::Copy('$(TargetDir)').TrimEnd('\').TrimEnd('/'))</_DesktopCopySource>
+    </PropertyGroup>
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\scripts\desktop-shortcut.ps1&quot; -SourceDir &quot;$(_DesktopCopySource)&quot;" />
+  </Target>
+
   <ItemGroup>
     <Content Include="wwwroot\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
