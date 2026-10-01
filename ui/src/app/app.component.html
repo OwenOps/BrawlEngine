@@ -1,4 +1,7 @@
 <div class="app-shell">
+  @if (notice.message(); as done) {
+    <p class="toast" role="status">{{ done }}</p>
+  }
   <aside class="sidebar">
     <div class="brand">
       <img class="brand-mark" src="logo.png" alt="BrawlEngine" />
@@ -153,11 +156,14 @@
           @for (item of downloadActivity.active(); track item.kind + ':dl:' + item.id) {
             <div class="activity-row">
               <p class="activity-name" [title]="item.fileName">Downloading · {{ item.fileName }}</p>
-              <div class="progress-bar" [class.indeterminate]="item.totalBytes <= 0">
-                <div
-                  class="progress-bar-fill"
-                  [style.width.%]="item.totalBytes > 0 ? (item.bytesDownloaded / item.totalBytes) * 100 : 100"
-                ></div>
+              <div class="progress-line">
+                <div class="progress-bar" [class.indeterminate]="item.totalBytes <= 0">
+                  <div
+                    class="progress-bar-fill"
+                    [style.width.%]="item.totalBytes > 0 ? (item.bytesDownloaded / item.totalBytes) * 100 : 100"
+                  ></div>
+                </div>
+                <span class="progress-pct">{{ downloadActivity.percentLabel(item.kind, item.id) }}</span>
               </div>
             </div>
           }
@@ -165,15 +171,15 @@
             <div class="activity-row">
               <p class="activity-name" [title]="applyActivity.labelFor(item.kind, item.id, item.action)">
                 {{ applyActivity.labelFor(item.kind, item.id, item.action) }}
-                @if (item.name) {
-                  <span> · {{ item.name }}</span>
-                }
               </p>
-              <div class="progress-bar" [class.indeterminate]="applyActivity.percentFor(item.kind, item.id) === null">
-                <div
-                  class="progress-bar-fill"
-                  [style.width.%]="applyActivity.percentFor(item.kind, item.id) ?? 100"
-                ></div>
+              <div class="progress-line">
+                <div class="progress-bar" [class.indeterminate]="applyActivity.percentFor(item.kind, item.id) === null">
+                  <div
+                    class="progress-bar-fill"
+                    [style.width.%]="applyActivity.percentFor(item.kind, item.id) ?? 100"
+                  ></div>
+                </div>
+                <span class="progress-pct">{{ applyActivity.percentLabel(item.kind, item.id) }}</span>
               </div>
             </div>
           }

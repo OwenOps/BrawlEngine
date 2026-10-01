@@ -477,8 +477,12 @@ button:focus-visible {
   white-space: nowrap;
 }
 
-.card-body .progress-bar {
+.card-body .progress-line {
   margin: 0.5rem 0 0;
+}
+
+.card-body .progress-line .progress-bar {
+  margin: 0;
 }
 
 .card-body .desc {
@@ -818,6 +822,12 @@ button.skin-target {
   color: var(--muted);
 }
 
+.card .note.status,
+.sound-row .note.status {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .pager {
   display: flex;
   align-items: center;
@@ -962,6 +972,46 @@ button.skin-target {
 
 .sound-row .thumb-crash.is-crash {
   color: var(--warn);
+}
+
+.progress-line {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.progress-line .progress-bar {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.progress-pct {
+  flex: 0 0 auto;
+  min-width: 2.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text);
+}
+
+.toast {
+  position: fixed;
+  top: 0.85rem;
+  left: 50%;
+  z-index: 80;
+  max-width: min(36rem, calc(100vw - 2rem));
+  margin: 0;
+  padding: 0.85rem 1.25rem;
+  border: none;
+  border-radius: 999px;
+  background: #3dff8a;
+  color: #04210f;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-align: center;
+  transform: translateX(-50%);
+  box-shadow: 0 10px 28px -8px rgba(61, 255, 138, 0.65);
 }
 
 .progress-bar {

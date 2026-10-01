@@ -39,6 +39,7 @@ import { LoadoutService } from '../../core/loadout/loadout.service';
 import { LikesService } from '../../core/likes/likes.service';
 import { CrashesService } from '../../core/crashes/crashes.service';
 import { GAMEBANANA_WAIT, JAVA_DOWNLOAD_URL, LIBRARY_WAIT } from '../../core/ui/app-shell.constants';
+import { NoticeService } from '../../core/ui/notice.service';
 import { SKIN_LEGENDS } from './skin-legends';
 
 @Component({
@@ -58,6 +59,7 @@ export class SkinsPageComponent implements OnDestroy {
   readonly nsfw = inject(NsfwSettings);
   readonly downloadActivity = inject(DownloadActivityService);
   readonly applyActivity = inject(ApplyActivityService);
+  private readonly notice = inject(NoticeService);
   readonly newDownloads = inject(NewDownloadsService);
   private searchTimer: ReturnType<typeof setTimeout> | undefined;
   private loadToken = 0;
@@ -647,7 +649,9 @@ export class SkinsPageComponent implements OnDestroy {
           failed.push(names.get(id) ?? String(id));
         }
       }
-      this.applySelectedStatus.set(applySelectedDone(okCount, failed));
+      const done = applySelectedDone(okCount, failed);
+      this.applySelectedStatus.set(done);
+      this.notice.show(done);
       await this.loadout.refresh();
       if (libraryFollowsLoadout(this.libraryFilter())) {
         this.loadLibrary();
@@ -802,6 +806,7 @@ export class SkinsPageComponent implements OnDestroy {
 
   private setNote(id: number, message: string): void {
     this.cardNote.update((notes) => ({ ...notes, [id]: message }));
+    this.notice.show(message);
   }
 
   private loadTools(): void {

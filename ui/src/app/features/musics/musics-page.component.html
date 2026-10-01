@@ -304,19 +304,25 @@
           <span class="badge crash" [title]="crashNote(item.id) ?? 'Crashes'">Crashes</span>
         }
         @if (isDownloading(item.id)) {
-          <div class="progress-bar" [class.indeterminate]="downloadActivity.percentFor('sounds', item.id) === null">
-            <div class="progress-bar-fill" [style.width.%]="downloadActivity.percentFor('sounds', item.id) ?? 100"></div>
+          <div class="progress-line">
+            <div class="progress-bar" [class.indeterminate]="downloadActivity.percentFor('sounds', item.id) === null">
+              <div class="progress-bar-fill" [style.width.%]="downloadActivity.percentFor('sounds', item.id) ?? 100"></div>
+            </div>
+            <span class="progress-pct">{{ downloadActivity.percentLabel('sounds', item.id) }}</span>
           </div>
         } @else if (applyActivity.isActive('sounds', item.id) || applyingId() === item.id || resettingId() === item.id) {
-          <div class="progress-bar" [class.indeterminate]="applyActivity.percentFor('sounds', item.id) === null">
-            <div class="progress-bar-fill" [style.width.%]="applyActivity.percentFor('sounds', item.id) ?? 100"></div>
+          <div class="progress-line">
+            <div class="progress-bar" [class.indeterminate]="applyActivity.percentFor('sounds', item.id) === null">
+              <div class="progress-bar-fill" [style.width.%]="applyActivity.percentFor('sounds', item.id) ?? 100"></div>
+            </div>
+            <span class="progress-pct">{{ applyActivity.percentLabel('sounds', item.id) }}</span>
           </div>
         }
         @if (diskSize(item.id); as size) {
           <p class="note">On disk · {{ size }}</p>
         }
         @if (cardNote()[item.id]; as note) {
-          <p class="note">{{ note }}</p>
+          <p class="note status">{{ note }}</p>
         }
       </div>
       <div class="actions">

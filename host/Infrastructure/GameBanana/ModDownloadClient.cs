@@ -42,7 +42,7 @@ public static class ModDownloadClient
 
         try
         {
-            var totalBytes = files.Sum(file => file.Size);
+            var totalBytes = files.Sum(file => file.Size > 0 ? file.Size : 0);
             var bytesBeforeCurrentFile = 0L;
             var saved = new List<DownloadedFileDto>();
             for (var fileIndex = 0; fileIndex < files.Count; fileIndex++)
@@ -60,6 +60,12 @@ public static class ModDownloadClient
                     .GetAsync(file.Url, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
                     .ConfigureAwait(false);
                 download.EnsureSuccessStatusCode();
+                // Profile size is sometimes 0. Content-Length still gives a real percent.
+                if (file.Size <= 0 && download.Content.Headers.ContentLength is > 0)
+                {
+                    totalBytes += download.Content.Headers.ContentLength.Value;
+                }
+
                 await using var input = await download.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
                 await using var output = new FileStream(dest, FileMode.Create, FileAccess.Write, FileShare.None);
                 await CopyWithProgressAsync(

@@ -29,6 +29,7 @@ import { GameLocationState } from './core/game/game-location.state';
 import { ApplyActivityService } from './core/apply/apply-activity.service';
 import { DownloadActivityService } from './core/download/download-activity.service';
 import { THEME_PRESETS, ThemeName, ThemeService } from './core/theme/theme.service';
+import { NoticeService } from './core/ui/notice.service';
 import { MapsPageComponent } from './features/maps/maps-page.component';
 import { MusicsPageComponent } from './features/musics/musics-page.component';
 import { SkinsPageComponent } from './features/skins/skins-page.component';
@@ -49,6 +50,7 @@ export class AppComponent implements AfterViewInit, OnDestroy {
   readonly downloadActivity = inject(DownloadActivityService);
   readonly applyActivity = inject(ApplyActivityService);
   readonly theme = inject(ThemeService);
+  readonly notice = inject(NoticeService);
   readonly themeNames = Object.keys(THEME_PRESETS) as ThemeName[];
   private runningTimer: ReturnType<typeof setInterval> | undefined;
   private discordTimer: ReturnType<typeof setTimeout> | undefined;
@@ -201,10 +203,10 @@ export class AppComponent implements AfterViewInit, OnDestroy {
         if (deleteDownloads && result.ok) {
           this.downloadActivity.notifyInventoryChanged();
         }
-        this.actionMessage.set(result.message);
+        this.flash(result.message);
       })
       .catch((error: unknown) => {
-        this.actionMessage.set(error instanceof Error ? error.message : 'Request failed.');
+        this.flash(error instanceof Error ? error.message : 'Request failed.');
       })
       .finally(() => {
         this.resetRunning.set(false);
@@ -233,7 +235,7 @@ export class AppComponent implements AfterViewInit, OnDestroy {
   saveConfig(): void {
     const name = this.configName().trim();
     if (!name) {
-      this.actionMessage.set('Enter a name to save the current loadout.');
+      this.flash('Enter a name to save the current loadout.');
       return;
     }
 
@@ -304,6 +306,11 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     });
   }
 
+  private flash(message: string): void {
+    this.actionMessage.set(message);
+    this.notice.show(message);
+  }
+
   private runLoadoutAction(action: () => Promise<{ ok: boolean; message: string }>): void {
     if (this.shellBusy()) {
       return;
@@ -313,10 +320,10 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     this.actionMessage.set(null);
     action()
       .then((result) => {
-        this.actionMessage.set(result.message);
+        this.flash(result.message);
       })
       .catch((error: unknown) => {
-        this.actionMessage.set(error instanceof Error ? error.message : 'Request failed.');
+        this.flash(error instanceof Error ? error.message : 'Request failed.');
       })
       .finally(() => {
         this.actionBusy.set(false);

@@ -15,6 +15,7 @@ public static class PlayerSearchClient
 
     public static readonly string[] Modes = ["1v1", "2v2", "3v3"];
     public const int PageSize = 15;
+    private const int NameSearchPageSize = 50;
     private static readonly TimeSpan Ttl = TimeSpan.FromMinutes(2);
 
     private static readonly ConcurrentDictionary<string, Entry> Pages = new(StringComparer.Ordinal);
@@ -34,6 +35,11 @@ public static class PlayerSearchClient
         gameMode = NormalizeMode(gameMode);
         region = NormalizeRegion(region);
         tier = NormalizeTier(tier);
+        // A typed name is a lookup, not a slice of the board. Region would hide them.
+        if (IsNameQuery(query))
+        {
+            region = "ALL";
+        }
         if (page < 1)
         {
             page = 1;
@@ -74,7 +80,8 @@ public static class PlayerSearchClient
         string? search,
         string region,
         int page,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int pageSize = PageSize)
     {
         var url =
             "https://api.brawlhalla.com/v1/leaderboard/ranked?game_mode="
@@ -82,7 +89,7 @@ public static class PlayerSearchClient
             + "&region="
             + Uri.EscapeDataString(region)
             + "&max_results="
-            + PageSize.ToString(CultureInfo.InvariantCulture)
+            + pageSize.ToString(CultureInfo.InvariantCulture)
             + "&page="
             + page.ToString(CultureInfo.InvariantCulture);
         if (!string.IsNullOrEmpty(search))
@@ -98,6 +105,69 @@ public static class PlayerSearchClient
 
         var totalPages = BrawlhallaJson.ReadInt(doc.RootElement, "total_pages") ?? 1;
         return (ParseRankings(doc.RootElement, gameMode), totalPages < 1 ? 1 : totalPages);
+    }
+
+    private readonly record struct RankingsFetch(
+        IReadOnlyList<PlayerSearchMatchDto> Matches,
+        int TotalPages,
+        bool Failed)
+    {
+        public (IReadOnlyList<PlayerSearchMatchDto> Matches, int TotalPages) Page => (Matches, TotalPages);
+    }
+
+    private static async Task<RankingsFetch> SafeRankingsPageAsync(
+        string gameMode,
+        string search,
+        string region,
+        int page,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var (matches, totalPages) = await RankingsPageAsync(
+                    gameMode,
+                    search,
+                    region,
+                    page,
+                    cancellationToken,
+                    NameSearchPageSize)
+                .ConfigureAwait(false);
+            return new RankingsFetch(matches, totalPages, false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException or OperationCanceledException)
+        {
+            StatsDebugLog.Line("bmg fail " + gameMode + " page=" + page);
+            return new RankingsFetch([], 1, true);
+        }
+    }
+
+    /// <summary>Letters, digits, and spaces. BMG rejects a search that contains a symbol such as '|'.</summary>
+    private static string ApiSearchText(string needle)
+    {
+        var kept = new char[needle.Length];
+        var n = 0;
+        var pendingSpace = false;
+        foreach (var ch in needle.Trim())
+        {
+            if (char.IsLetterOrDigit(ch))
+            {
+                if (pendingSpace && n > 0)
+                {
+                    kept[n++] = ' ';
+                }
+
+                kept[n++] = ch;
+                pendingSpace = false;
+                continue;
+            }
+
+            if (char.IsWhiteSpace(ch))
+            {
+                pendingSpace = true;
+            }
+        }
+
+        return new string(kept, 0, n);
     }
 
     private static async Task<PlayerSearchPageDto> FetchAsync(
@@ -213,39 +283,67 @@ public static class PlayerSearchClient
         }
 
         // BMG 1v1 search= is fuzzy and often omits the exact name; 2v2/3v3 still list them.
+        // The first 15 fuzzy rows hid real names, so a lookup reads 50, then one more page if needed.
+        // A symbol such as '|' makes BMG reject the request. Search the letters and digits.
+        var apiSearch = ApiSearchText(search);
         StatsDebugLog.Reset(
             "name=" + search
+            + " api=" + apiSearch
             + " mode=" + gameMode
             + " region=" + region);
+        if (apiSearch.Length < 2)
+        {
+            return WithLog(new PlayerSearchPageDto(
+                [],
+                query,
+                gameMode,
+                1,
+                "\"" + search + "\" is not on this season's ranked leaderboard. BMG only lists players ranked this season, and the list lags after a match."));
+        }
+
         var modes = NameSearchModes(gameMode);
         var bmgTasks = modes
-            .Select(mode => RankingsPageAsync(mode, search, region, 1, cancellationToken))
+            .Select(mode => SafeRankingsPageAsync(mode, apiSearch, region, 1, cancellationToken))
             .ToArray();
         await Task.WhenAll(bmgTasks).ConfigureAwait(false);
 
         var hits = new List<PlayerSearchMatchDto>();
         var seen = new HashSet<int>();
+        var closest = new List<PlayerSearchMatchDto>();
+        var closestSeen = new HashSet<int>();
         for (var i = 0; i < modes.Length; i++)
         {
-            var pageRows = (await bmgTasks[i].ConfigureAwait(false)).Matches;
-            var modeHits = 0;
-            foreach (var row in pageRows)
+            var first = await bmgTasks[i].ConfigureAwait(false);
+            var modeHits = TakeNameHits(first.Page.Matches, search, seen, hits);
+            if (modeHits == 0 && first.Page.TotalPages > 1 && !first.Failed)
             {
-                if (!NameHits(row.Name, search))
-                {
-                    continue;
-                }
-
-                modeHits++;
-                if (!seen.Add(row.Id))
-                {
-                    continue;
-                }
-
-                hits.Add(row);
+                var second = await SafeRankingsPageAsync(modes[i], apiSearch, region, 2, cancellationToken)
+                    .ConfigureAwait(false);
+                modeHits += TakeNameHits(second.Page.Matches, search, seen, hits);
             }
 
-            StatsDebugLog.Line("bmg " + modes[i] + " raw=" + pageRows.Count + " nameHits=" + modeHits);
+            if (modeHits == 0)
+            {
+                TakeClosest(first.Page.Matches, closestSeen, closest);
+            }
+
+            StatsDebugLog.Line(
+                "bmg " + modes[i]
+                + " raw=" + first.Page.Matches.Count
+                + " nameHits=" + modeHits
+                + (first.Failed ? " failed" : ""));
+        }
+
+        if (hits.Count == 0 && closest.Count == 0 && bmgTasks.All(task => task.Result.Failed))
+        {
+            throw new HttpRequestException(LoadError);
+        }
+
+        var warning = (string?)null;
+        if (hits.Count == 0 && closest.Count > 0)
+        {
+            hits.AddRange(closest);
+            warning = "No exact \"" + search + "\" on this season's ranked leaderboard. Closest names are below — click one.";
         }
 
         hits.Sort((left, right) =>
@@ -260,8 +358,8 @@ public static class PlayerSearchClient
             var rightRating = right.Rating ?? -1;
             return ascending ? leftRating.CompareTo(rightRating) : rightRating.CompareTo(leftRating);
         });
-        var warning = hits.Count == 0
-            ? "No ranked player named \"" + search + "\" in 1v1, 2v2, or 3v3 this season. Paste their Brawlhalla id or a player URL."
+        warning ??= hits.Count == 0
+            ? "\"" + search + "\" is not on this season's ranked leaderboard. BMG only lists players ranked this season, and the list lags after a match."
             : null;
         StatsDebugLog.Line("merged=" + hits.Count);
         return WithLog(new PlayerSearchPageDto(hits, query, gameMode, 1, warning));
@@ -334,15 +432,15 @@ public static class PlayerSearchClient
 
         var first = await RankingsPageAsync(gameMode, null, region, 1, cancellationToken).ConfigureAwait(false);
         var total = Math.Max(1, first.TotalPages);
-        var start = tier == "diamond"
-            ? 1
-            : await FirstPageAsync(
-                gameMode,
-                region,
-                total,
-                GuessBandPage(tier, total),
-                rows => InBand(rows, tier).Count > 0,
-                cancellationToken).ConfigureAwait(false);
+        // "Has this tier" is not monotonic (false again below the band), so a late guess
+        // searched only downward and returned an empty page. "At or below" stays true.
+        var start = await FirstPageAsync(
+            gameMode,
+            region,
+            total,
+            GuessBandPage(tier, total),
+            rows => ReachedTier(rows, tier),
+            cancellationToken).ConfigureAwait(false);
         var afterBand = tier == "tin"
             ? total + 1
             : await FirstPageAsync(
@@ -401,6 +499,20 @@ public static class PlayerSearchClient
         return lo;
     }
 
+    /// <summary>
+    /// First page of the band: someone on the page is this tier or lower.
+    /// The board is rating-descending, so this flips once and stays true.
+    /// </summary>
+    private static bool ReachedTier(IReadOnlyList<PlayerSearchMatchDto> rows, string tier)
+    {
+        var wanted = FamilyRank(tier);
+        return rows.Any(row =>
+        {
+            var family = TierFamily(row.Tier, row.Rating);
+            return family is not null && FamilyRank(family) <= wanted;
+        });
+    }
+
     private static bool PastTier(IReadOnlyList<PlayerSearchMatchDto> rows, string tier)
     {
         var wanted = FamilyRank(tier);
@@ -416,7 +528,8 @@ public static class PlayerSearchClient
     {
         return family switch
         {
-            "diamond" or "valhallan" => 5,
+            "valhallan" => 6,
+            "diamond" => 5,
             "platinum" => 4,
             "gold" => 3,
             "silver" => 2,
@@ -591,26 +704,108 @@ public static class PlayerSearchClient
         return matches;
     }
 
+    private static bool IsNameQuery(string query)
+    {
+        return !LooksLikeSteamId(query)
+            && !LooksLikeId(query, out _)
+            && NameNeedle(query).Length >= 2;
+    }
+
+    private static int TakeNameHits(
+        IReadOnlyList<PlayerSearchMatchDto> rows,
+        string search,
+        HashSet<int> seen,
+        List<PlayerSearchMatchDto> hits)
+    {
+        var count = 0;
+        foreach (var row in rows)
+        {
+            if (!NameHits(row.Name, search))
+            {
+                continue;
+            }
+
+            count++;
+            if (seen.Add(row.Id))
+            {
+                hits.Add(row);
+            }
+        }
+
+        return count;
+    }
+
+    private static void TakeClosest(
+        IReadOnlyList<PlayerSearchMatchDto> rows,
+        HashSet<int> seen,
+        List<PlayerSearchMatchDto> closest)
+    {
+        foreach (var row in rows)
+        {
+            if (closest.Count >= 12)
+            {
+                return;
+            }
+
+            if (seen.Add(row.Id))
+            {
+                closest.Add(row);
+            }
+        }
+    }
+
     private static bool NameHits(string name, string needle)
     {
-        return NameKey(name).Contains(needle, StringComparison.OrdinalIgnoreCase);
+        var want = NameKey(needle);
+        return want.Length >= 2 && NameKey(name).Contains(want, StringComparison.Ordinal);
     }
 
     private static int NameRank(string name, string needle)
     {
         var key = NameKey(name);
-        if (key.Equals(needle, StringComparison.OrdinalIgnoreCase))
+        var want = NameKey(needle);
+        if (key.Equals(want, StringComparison.Ordinal))
         {
             return 0;
         }
 
-        return key.StartsWith(needle, StringComparison.OrdinalIgnoreCase) ? 1 : 2;
+        return key.StartsWith(want, StringComparison.Ordinal) ? 1 : 2;
     }
 
+    /// <summary>Letters and digits only, so a clan tag or symbol on the in-game name still matches.</summary>
     private static string NameKey(string name)
     {
-        var key = name.Trim();
-        return key.StartsWith('@') ? key[1..].Trim() : key;
+        var stripped = name.Trim();
+        if (stripped.StartsWith('@'))
+        {
+            stripped = stripped[1..].Trim();
+        }
+
+        var count = 0;
+        foreach (var ch in stripped)
+        {
+            if (char.IsLetterOrDigit(ch))
+            {
+                count++;
+            }
+        }
+
+        if (count == 0)
+        {
+            return "";
+        }
+
+        return string.Create(count, stripped, static (dest, source) =>
+        {
+            var i = 0;
+            foreach (var ch in source)
+            {
+                if (char.IsLetterOrDigit(ch))
+                {
+                    dest[i++] = char.ToLowerInvariant(ch);
+                }
+            }
+        });
     }
 
     private static string NameNeedle(string query)
@@ -622,7 +817,40 @@ public static class PlayerSearchClient
 
         var hash = query.LastIndexOf('#');
         var name = (hash >= 0 ? query[..hash] : query).Trim();
-        return name.StartsWith('@') ? name[1..].Trim() : name;
+        if (name.StartsWith('@'))
+        {
+            name = name[1..].Trim();
+        }
+
+        return StripWrapped(name);
+    }
+
+    private static string StripWrapped(string name)
+    {
+        var depth = 0;
+        var kept = new char[name.Length];
+        var n = 0;
+        foreach (var ch in name)
+        {
+            if (ch is '[' or '(')
+            {
+                depth++;
+                continue;
+            }
+
+            if (ch is ']' or ')' && depth > 0)
+            {
+                depth--;
+                continue;
+            }
+
+            if (depth == 0)
+            {
+                kept[n++] = ch;
+            }
+        }
+
+        return new string(kept, 0, n).Trim();
     }
 
     private static bool LooksLikeId(string query, out int id)

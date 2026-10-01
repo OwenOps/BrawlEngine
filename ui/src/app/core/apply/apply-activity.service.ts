@@ -40,13 +40,19 @@ export class ApplyActivityService {
     return Math.min(100, Math.round((progress.done / progress.total) * 100));
   }
 
+  percentLabel(kind: ApplyWorkKind, id: number): string {
+    const percent = this.percentFor(kind, id);
+    return percent === null ? '…' : percent + '%';
+  }
+
   labelFor(kind: ApplyWorkKind, id: number, fallback: 'apply' | 'reset' = 'apply'): string {
     const progress = this.items().get(key(kind, id));
-    if (progress?.name) {
-      return progress.name;
-    }
-    const verb = progress?.action === 'reset' || fallback === 'reset' ? 'Resetting' : 'Applying';
     const percent = this.percentFor(kind, id);
+    const verb = progress?.action === 'reset' || fallback === 'reset' ? 'Resetting' : 'Applying';
+    const head = progress?.name?.trim();
+    if (head) {
+      return percent === null || head.includes('%') ? head : head + ' · ' + percent + '%';
+    }
     return percent === null ? verb + '…' : verb + ' ' + percent + '%';
   }
 

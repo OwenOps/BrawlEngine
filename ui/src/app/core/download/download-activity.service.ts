@@ -52,6 +52,10 @@ export class DownloadActivityService {
     return Math.min(100, Math.round((progress.bytesDownloaded / progress.totalBytes) * 100));
   }
 
+  percentLabel(kind: DownloadKind, id: number): string {
+    return percentText(this.percentFor(kind, id));
+  }
+
   /** Bump when download folders on disk change outside a page (Reset all wipe). */
   readonly inventoryEpoch = signal(0);
 
@@ -93,4 +97,8 @@ export class DownloadActivityService {
 
 function key(kind: DownloadKind, id: number): string {
   return `${kind}:${id}`;
+}
+
+function percentText(percent: number | null): string {
+  return percent === null ? '…' : percent + '%';
 }

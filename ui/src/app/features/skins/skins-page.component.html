@@ -254,12 +254,18 @@
         }
         <app-author-credit [item]="item" (profile)="openProfile($event)" (more)="moreFromAuthor($event)" />
         @if (isDownloading(item.id)) {
-          <div class="progress-bar" [class.indeterminate]="downloadActivity.percentFor('skins', item.id) === null">
-            <div class="progress-bar-fill" [style.width.%]="downloadActivity.percentFor('skins', item.id) ?? 100"></div>
+          <div class="progress-line">
+            <div class="progress-bar" [class.indeterminate]="downloadActivity.percentFor('skins', item.id) === null">
+              <div class="progress-bar-fill" [style.width.%]="downloadActivity.percentFor('skins', item.id) ?? 100"></div>
+            </div>
+            <span class="progress-pct">{{ downloadActivity.percentLabel('skins', item.id) }}</span>
           </div>
         } @else if (applyActivity.isActive('skins', item.id) || applyingId() === item.id || resettingId() === item.id) {
-          <div class="progress-bar" [class.indeterminate]="applyActivity.percentFor('skins', item.id) === null">
-            <div class="progress-bar-fill" [style.width.%]="applyActivity.percentFor('skins', item.id) ?? 100"></div>
+          <div class="progress-line">
+            <div class="progress-bar" [class.indeterminate]="applyActivity.percentFor('skins', item.id) === null">
+              <div class="progress-bar-fill" [style.width.%]="applyActivity.percentFor('skins', item.id) ?? 100"></div>
+            </div>
+            <span class="progress-pct">{{ applyActivity.percentLabel('skins', item.id) }}</span>
           </div>
         }
         <div class="actions">
@@ -311,7 +317,7 @@
           <p class="note">On disk · {{ size }}</p>
         }
         @if (cardNote()[item.id]; as note) {
-          <p class="note">{{ note }}</p>
+          <p class="note status">{{ note }}</p>
         }
       </div>
     </article>

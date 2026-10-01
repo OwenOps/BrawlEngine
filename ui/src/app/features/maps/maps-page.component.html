@@ -188,12 +188,18 @@
         <h3 [title]="mod.name">{{ mod.name }}</h3>
         <app-author-credit [item]="mod" (profile)="openProfile($event)" (more)="moreFromAuthor($event)" />
         @if (isDownloading(mod.id)) {
-          <div class="progress-bar" [class.indeterminate]="downloadPercent(mod.id) === null">
-            <div class="progress-bar-fill" [style.width.%]="downloadPercent(mod.id) ?? 100"></div>
+          <div class="progress-line">
+            <div class="progress-bar" [class.indeterminate]="downloadPercent(mod.id) === null">
+              <div class="progress-bar-fill" [style.width.%]="downloadPercent(mod.id) ?? 100"></div>
+            </div>
+            <span class="progress-pct">{{ downloadActivity.percentLabel('maps', mod.id) }}</span>
           </div>
         } @else if (applyActivity.isActive('maps', mod.id) || applyingId() === mod.id || resettingId() === mod.id) {
-          <div class="progress-bar" [class.indeterminate]="applyActivity.percentFor('maps', mod.id) === null">
-            <div class="progress-bar-fill" [style.width.%]="applyActivity.percentFor('maps', mod.id) ?? 100"></div>
+          <div class="progress-line">
+            <div class="progress-bar" [class.indeterminate]="applyActivity.percentFor('maps', mod.id) === null">
+              <div class="progress-bar-fill" [style.width.%]="applyActivity.percentFor('maps', mod.id) ?? 100"></div>
+            </div>
+            <span class="progress-pct">{{ applyActivity.percentLabel('maps', mod.id) }}</span>
           </div>
         }
         <div class="actions">
@@ -245,7 +251,7 @@
           <p class="note">On disk · {{ size }}</p>
         }
         @if (cardNote()[mod.id]; as note) {
-          <p class="note">{{ note }}</p>
+          <p class="note status">{{ note }}</p>
         }
       </div>
     </article>
